@@ -1,0 +1,6 @@
+/target
+*.jsonl
+!fixtures/*.jsonl
+.DS_Store
+.idea/
+.vscode/

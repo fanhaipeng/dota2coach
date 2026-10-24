@@ -1,0 +1,47 @@
+{
+  "provider": { "name": "Dota 2", "appid": 570, "version": 47, "timestamp": 1761336000 },
+  "map": {
+    "name": "start", "matchid": "8123456789", "game_time": 845, "clock_time": 754,
+    "daytime": true, "nightstalker_night": false,
+    "game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", "paused": false,
+    "win_team": "none", "customgamename": "", "ward_purchase_cooldown": 0
+  },
+  "player": {
+    "steamid": "76561198000000000", "name": "haipeng", "activity": "playing",
+    "kills": 3, "deaths": 2, "assists": 5, "last_hits": 61, "denies": 4, "kill_streak": 0,
+    "commands_issued": 4210, "kill_list": {}, "team_name": "dire",
+    "gold": 1312, "gold_reliable": 410, "gold_unreliable": 902,
+    "gold_from_hero_kills": 900, "gold_from_creep_kills": 2300, "gold_from_income": 1100,
+    "gold_from_shared": 300, "gpm": 412, "xpm": 520
+  },
+  "hero": {
+    "xpos": -1820, "ypos": 4200, "id": 2, "name": "npc_dota_hero_axe", "level": 11,
+    "xp": 7400, "alive": true, "respawn_seconds": 0, "buyback_cost": 760, "buyback_cooldown": 0,
+    "health": 1450, "max_health": 1800, "health_percent": 80,
+    "mana": 300, "max_mana": 520, "mana_percent": 57,
+    "silenced": false, "stunned": false, "disarmed": false, "magicimmune": false,
+    "hexed": false, "muted": false, "break": false, "aghanims_scepter": false,
+    "aghanims_shard": false, "smoked": false, "has_debuff": false,
+    "talent_1": true, "talent_2": false
+  },
+  "abilities": {
+    "ability0": { "name": "axe_berserkers_call", "level": 4, "can_cast": true, "passive": false, "ability_active": true, "cooldown": 0, "ultimate": false },
+    "ability1": { "name": "axe_battle_hunger", "level": 1, "can_cast": true, "passive": false, "ability_active": true, "cooldown": 0, "ultimate": false },
+    "ability2": { "name": "axe_counter_helix", "level": 3, "can_cast": false, "passive": true, "ability_active": true, "cooldown": 0, "ultimate": false },
+    "ability3": { "name": "axe_culling_blade", "level": 2, "can_cast": true, "passive": false, "ability_active": true, "cooldown": 0, "ultimate": true }
+  },
+  "items": {
+    "slot0": { "name": "item_blink", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false },
+    "slot1": { "name": "item_vanguard", "purchaser": 4, "can_cast": false, "cooldown": 0, "passive": true },
+    "slot2": { "name": "item_phase_boots", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false },
+    "slot3": { "name": "item_magic_wand", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false, "charges": 12 },
+    "slot4": { "name": "item_tango", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false, "charges": 1 },
+    "slot5": { "name": "empty" },
+    "slot6": { "name": "empty" }, "slot7": { "name": "empty" }, "slot8": { "name": "empty" },
+    "stash0": { "name": "empty" }, "stash1": { "name": "empty" }, "stash2": { "name": "empty" },
+    "stash3": { "name": "empty" }, "stash4": { "name": "empty" }, "stash5": { "name": "empty" },
+    "teleport0": { "name": "item_tpscroll", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false, "charges": 1 },
+    "neutral0": { "name": "item_trusty_shovel", "purchaser": 4, "can_cast": true, "cooldown": 0, "passive": false }
+  },
+  "auth": { "token": "dota2coach-local" }
+}
