@@ -17,17 +17,13 @@ fn check(s) {
     let t = s.clock_time;
     if t < 0 { return; }
 
+    // Message keys; the language's catalog names them and joins the list.
     let runes = [];
-    if (t >= 105 && t < 110) || (t >= 225 && t < 230) { runes.push("Water"); }
-    if soon(t, 120, 360) { runes.push("Power"); }
-    if soon(t, 180, 180) { runes.push("Bounty"); }
-    if soon(t, 420, 420) { runes.push("Wisdom"); }
+    if (t >= 105 && t < 110) || (t >= 225 && t < 230) { runes.push("rune.water"); }
+    if soon(t, 120, 360) { runes.push("rune.power"); }
+    if soon(t, 180, 180) { runes.push("rune.bounty"); }
+    if soon(t, 420, 420) { runes.push("rune.wisdom"); }
     if runes.is_empty() { return; }
 
-    let names = runes[0];
-    for i in 1..runes.len() {
-        names += if i == runes.len() - 1 { " and " } else { ", " };
-        names += runes[i];
-    }
-    #{ say: `${names} runes in 15 seconds.`, priority: 1, cooldown: 30 }
+    #{ msg: "runes.soon", args: #{ runes: runes }, priority: 1, cooldown: 30 }
 }

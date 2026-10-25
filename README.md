@@ -47,7 +47,7 @@ never injects into the game and never sends input. It gives advice; you play.
 
 | Command | What it does |
 |---|---|
-| `dota2coach run` | Listen on `127.0.0.1:3000` and coach live. `--role pos1` loads a role pack, `--record FILE` saves the game for replaying, `--mute` prints instead of speaking. |
+| `dota2coach run` | Listen on `127.0.0.1:3000` and coach live. `--role pos1` loads a role pack, `--lang zh` coaches in Chinese, `--record FILE` saves the game for replaying, `--mute` prints instead of speaking. |
 | `dota2coach replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 10` at 10x. |
 | `dota2coach gsi-config` | Print the GSI config file (`--port`, `--token` must match `run`). |
 
@@ -58,6 +58,18 @@ Set `RUST_LOG=debug` to see every rule that fires.
 Uses the speech engine the OS already has: `System.Speech` through PowerShell
 on Windows, `say` on macOS, `spd-say` or `espeak-ng` on Linux. Without one,
 advice is printed.
+
+`--lang` picks the language (`en` or `zh`, see [Languages](rules/README.md#languages)),
+and the coach picks an installed voice for it. `--voice "<name>"` uses a
+specific voice instead. If no voice matches, the coach logs the installed
+ones and uses the default voice. To add a Chinese voice:
+
+- **Windows:** Settings > Time & language > Language & region > add
+  **Chinese (Simplified, China)** with the *Text-to-speech* feature
+  (Microsoft Huihui). Restart the coach afterwards.
+- **macOS:** System Settings > Accessibility > Spoken Content > System Voice >
+  Manage Voices > Chinese (China mainland), for example Tingting.
+- **Linux:** `espeak-ng` includes Mandarin (`cmn`).
 
 ## Rules
 

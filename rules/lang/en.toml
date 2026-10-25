@@ -1,0 +1,26 @@
+# Shared English messages. Every other language falls back to these, so every
+# message key a rule uses should exist here. See rules/README.md.
+
+low_hp = "Low health. Back off."
+no_tp = "You have no TP scroll."
+
+[_meta]
+name = "English"
+voice = "en-US"
+list_separator = ", "
+list_last = " and "
+
+[buyback]
+no_gold = "No buyback gold. Play safe."
+
+[gold]
+unspent = "You have {gold} gold. Go spend it."
+
+[runes]
+soon = "{runes} runes in 15 seconds."
+
+[rune]
+water = "Water"
+power = "Power"
+bounty = "Bounty"
+wisdom = "Wisdom"

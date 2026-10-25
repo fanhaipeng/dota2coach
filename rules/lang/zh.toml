@@ -1,0 +1,25 @@
+# 中文（简体）消息。缺少的键会用英文说出来。
+
+low_hp = "血量低，快撤退。"
+no_tp = "你身上没有回城卷轴。"
+
+[_meta]
+name = "中文"
+voice = "zh-CN"
+list_separator = "、"
+list_last = "和"
+
+[buyback]
+no_gold = "买活钱不够，打得稳一点。"
+
+[gold]
+unspent = "你有{gold}金钱，快去花掉。"
+
+[runes]
+soon = "{runes}15秒后刷新。"
+
+[rune]
+water = "水符"
+power = "能量符"
+bounty = "赏金符"
+wisdom = "智慧符"
