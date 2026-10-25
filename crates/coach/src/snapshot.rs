@@ -18,6 +18,8 @@ pub struct GameSnapshot {
     /// True from the pre-game countdown until the Ancient falls.
     pub in_game: bool,
     pub paused: bool,
+    /// `radiant` or `dire` once the game is over, otherwise `none` or empty.
+    pub win_team: String,
     /// The in-game clock in seconds; negative before the horn.
     pub clock_time: i64,
     pub daytime: bool,
@@ -103,6 +105,7 @@ impl GameSnapshot {
                 "DOTA_GAMERULES_STATE_PRE_GAME" | "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"
             ),
             paused: map.paused,
+            win_team: map.win_team.clone(),
             clock_time: map.clock_time,
             daytime: map.daytime,
             team: player.team_name.clone(),

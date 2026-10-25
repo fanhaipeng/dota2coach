@@ -45,3 +45,31 @@ gpm_behind = "你的发育落后了，每分钟只有{gpm}金钱，去找更安�
 
 [support]
 wards = "你身上没有眼，去拿眼，保持视野。"
+
+# 赛后复盘（dota2coach review）。
+[review]
+title = "比赛 {match} · {hero} · {role} · {duration} · {result}"
+won = "胜利"
+lost = "失败"
+result_unknown = "结果未知"
+role_unknown = "位置未知"
+final = "最终：{level}级，{kills}/{deaths}/{assists}，{last_hits}个正补，每分钟{gpm}金钱"
+farm_header = "发育"
+farm_row = "  {time}  {last_hits}个正补，每分钟{gpm}金钱{target}"
+farm_target = "（目标{target}）"
+deaths_header = "死亡：{count}次"
+no_deaths = "  没有死亡。"
+death_row = "  {time}  {place}，损失{lost}金钱（身上有{carried}）{tp}{warned}"
+lane_safe = "在优势路"
+lane_mid = "在中路"
+lane_off = "在劣势路"
+lane_none = "在野区、河道或基地"
+no_tp = "，没带回城卷轴"
+warned = "。之前提醒过：{advice}"
+items_header = "装备"
+item_row = "  {time}  {item}"
+gold_header = "没花掉的钱"
+gold_ok = "  没有长时间带着超过{gold}的金钱。"
+gold_banked = "  带着超过{gold}的金钱一共{total}，最长一次{longest}，从{from}开始。"
+advice_header = "教练一共说了{count}句，最常说的："
+advice_row = "  {count}次  {text}"

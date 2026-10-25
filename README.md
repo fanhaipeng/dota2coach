@@ -71,6 +71,22 @@ hero, the coach window prints `new match` and loads your hero's advice. At
 about 4:00 it tells you which role it thinks you are playing, from the lane
 you are in, and switches to that role's advice. Press Ctrl+C to stop it.
 
+Every match is recorded to the `games` folder, so you can review it.
+
+### 4. Review the game
+
+After the game:
+
+```
+.\dota2coach.exe review
+```
+
+It reviews your latest game: your farm against the target for your role, each
+death (where, how much gold you lost, whether you had a TP and what the coach
+had warned you about just before), your item timings, how long you sat on
+unspent gold, and what the coach told you most often. Add `--lang zh` for
+Chinese, or pass a file from `games` to review an older game.
+
 If Windows Firewall asks about the coach, allowing private networks is enough;
 it only listens on your own computer (`127.0.0.1`).
 
@@ -78,7 +94,8 @@ it only listens on your own computer (`127.0.0.1`).
 
 | Command | What it does |
 |---|---|
-| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking; `--record game.jsonl` to save the game for replaying. |
+| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. |
+| `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong. |
 | `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
 | `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
 | `gsi-config` | Print the GSI config instead of installing it. |
@@ -180,8 +197,8 @@ patch.
 
 ## Roadmap
 
-1. GSI, predefined rules and voice on Windows, macOS and Linux (this).
-2. Post-game replay review with an LLM.
+1. GSI, predefined rules and voice on Windows, macOS and Linux (done).
+2. Post-game review: the facts (`review`, done), then an LLM write-up and trends across games.
 3. Minimap vision sidecar (prototype in Python, port to Rust; Windows first).
 4. Live LLM advice triggered by game events.
 5. A small trained model, compared against the rules.

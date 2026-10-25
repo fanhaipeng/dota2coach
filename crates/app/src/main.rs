@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use coach::Catalog;
-use dota2coach::{CoachConfig, resolve_rules_dir, run_coach, steam};
+use dota2coach::{
+    CoachConfig, Recording, latest_recording, resolve_rules_dir, review_file, run_coach, steam,
+};
 use gsi::record::{self, Recorder};
 use tokio::sync::mpsc;
 use tracing::info;
@@ -13,6 +15,7 @@ use voice::{ConsoleSpeaker, Speaker, VoiceRequest};
 
 const DEFAULT_PORT: u16 = 3000;
 const DEFAULT_TOKEN: &str = "dota2coach-local";
+const DEFAULT_GAMES_DIR: &str = "games";
 
 /// A voice coach for Dota 2, driven by Game State Integration.
 #[derive(Parser)]
@@ -57,9 +60,33 @@ enum Cmd {
         /// Auth token from the GSI config; other payloads are ignored.
         #[arg(long, default_value = DEFAULT_TOKEN)]
         token: String,
-        /// Also save every payload to this file, for replaying later.
+        /// Save everything to this one file instead of one file per match.
         #[arg(long)]
         record: Option<PathBuf>,
+        /// Folder where each match is recorded for `review`.
+        #[arg(long, default_value = DEFAULT_GAMES_DIR)]
+        games: PathBuf,
+        /// Don't record anything.
+        #[arg(long, conflicts_with = "record")]
+        no_record: bool,
+    },
+    /// Review a recorded game: deaths, farm, items, unspent gold and advice.
+    Review {
+        /// A recording; defaults to the newest one in the games folder.
+        file: Option<PathBuf>,
+        #[arg(long, default_value = DEFAULT_GAMES_DIR)]
+        games: PathBuf,
+        #[arg(long)]
+        rules: Option<PathBuf>,
+        /// Language of the review, for example en or zh.
+        #[arg(long, default_value = "en")]
+        lang: String,
+        /// The role you played, if detection got it wrong.
+        #[arg(long)]
+        role: Option<String>,
+        /// Print the facts as JSON instead of text.
+        #[arg(long)]
+        json: bool,
     },
     /// Coach a recorded game, without Dota running.
     Replay {
@@ -120,14 +147,22 @@ impl CoachArgs {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    // A review prints its report; the coach's play-by-play would bury it.
+    let level = if matches!(cli.command, Cmd::Review { .. }) {
+        "warn"
+    } else {
+        "info"
+    };
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level)),
         )
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
 
-    match Cli::parse().command {
+    match cli.command {
         Cmd::Setup {
             dota_dir,
             port,
@@ -141,10 +176,13 @@ async fn main() -> anyhow::Result<()> {
             port,
             token,
             record,
+            games,
+            no_record,
         } => {
-            let recorder = match &record {
-                Some(path) => Some(Recorder::create(path).await?),
-                None => None,
+            let recording = match &record {
+                Some(path) => Recording::File(Recorder::create(path).await?),
+                None if no_record => Recording::Off,
+                None => Recording::per_match(games),
             };
             let (tx, rx) = mpsc::channel(256);
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -156,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
             });
             let speaker = coach.speaker()?;
             tokio::select! {
-                result = run_coach(rx, coach.config(), speaker.as_ref(), recorder) => {
+                result = run_coach(rx, coach.config(), speaker.as_ref(), recording, None) => {
                     result?;
                 }
                 _ = tokio::signal::ctrl_c() => info!("stopping"),
@@ -166,9 +204,42 @@ async fn main() -> anyhow::Result<()> {
             let (tx, rx) = mpsc::channel(256);
             let reader = tokio::spawn(async move { record::replay(&file, speed, tx).await });
             let speaker = coach.speaker()?;
-            let spoken = run_coach(rx, coach.config(), speaker.as_ref(), None).await?;
+            let spoken =
+                run_coach(rx, coach.config(), speaker.as_ref(), Recording::Off, None).await?;
             let payloads = reader.await??;
             info!(payloads, messages = spoken.len(), "replay finished");
+        }
+        Cmd::Review {
+            file,
+            games,
+            rules,
+            lang,
+            role,
+            json,
+        } => {
+            let file = match file.or_else(|| latest_recording(&games)) {
+                Some(file) => file,
+                None => anyhow::bail!(
+                    "no recordings in {}; play a game with `dota2coach run` first",
+                    games.display()
+                ),
+            };
+            let config = CoachConfig {
+                rules_dir: resolve_rules_dir(rules.as_deref()),
+                role,
+                min_gap_secs: 3,
+                lang,
+            };
+            let catalog = Catalog::load(&config.lang, std::slice::from_ref(&config.rules_dir))?;
+            info!(file = %file.display(), "reviewing");
+            let Some(report) = review_file(&file, config).await? else {
+                anyhow::bail!("{} has no match in it", file.display());
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.render(&catalog));
+            }
         }
     }
     Ok(())

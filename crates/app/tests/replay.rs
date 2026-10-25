@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use dota2coach::{CoachConfig, run_coach};
+use dota2coach::{CoachConfig, Recording, run_coach};
 use tokio::sync::mpsc;
 use voice::Speaker;
 
@@ -32,7 +32,12 @@ async fn replay_sample(role: Option<&str>, lang: &str) -> Vec<String> {
         min_gap_secs: 3,
         lang: lang.to_owned(),
     };
-    let spoken = run_coach(rx, config, &speaker, None).await.unwrap();
+    let spoken: Vec<String> = run_coach(rx, config, &speaker, Recording::Off, None)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| s.text)
+        .collect();
     assert_eq!(reader.await.unwrap().unwrap(), 184);
     assert_eq!(spoken, *speaker.0.lock().unwrap());
     spoken
@@ -220,11 +225,11 @@ async fn replay_file(file: PathBuf, lang: &str) -> Vec<String> {
         min_gap_secs: 3,
         lang: lang.to_owned(),
     };
-    let spoken = run_coach(rx, config, &Collect::default(), None)
+    let spoken = run_coach(rx, config, &Collect::default(), Recording::Off, None)
         .await
         .unwrap();
     reader.await.unwrap().unwrap();
-    spoken
+    spoken.into_iter().map(|s| s.text).collect()
 }
 
 #[tokio::test]
@@ -312,4 +317,79 @@ fn every_role_rule_fires_in_a_bad_game() {
             assert!(silent.is_empty(), "{role} ({lang}) never fired: {silent:?}");
         }
     }
+}
+
+/// Two matches in one session are recorded to two files, and reviewing one
+/// finds the death the recording contains.
+#[tokio::test]
+async fn records_each_match_and_reviews_it() {
+    use dota2coach::{latest_recording, review_file};
+    let dir = std::env::temp_dir().join(format!("dota2coach-games-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let mut lines = Vec::new();
+    for (match_id, team) in [("111", "radiant"), ("222", "dire")] {
+        for t in -5..=400 {
+            // Dies at 5:00 with 1800 gold and drops to 1200.
+            let alive = !(300..330).contains(&t);
+            let gold = if t < 300 { 1800 } else { 1200 };
+            lines.push(serde_json::json!({
+                "map": { "matchid": match_id, "clock_time": t, "game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS" },
+                "player": { "team_name": team, "gold": gold, "last_hits": t / 15 },
+                "hero": { "name": "npc_dota_hero_sniper", "alive": alive, "health_percent": 100,
+                          "xpos": -1500, "ypos": -1300 },
+                "items": { "slot0": { "name": "item_dragon_lance" } }
+            }));
+        }
+    }
+    let (tx, rx) = mpsc::channel(64);
+    let feeder = tokio::spawn(async move {
+        for (i, payload) in lines.into_iter().enumerate() {
+            let raw = payload.to_string();
+            let state = serde_json::from_str(&raw).unwrap();
+            let update = gsi::Update {
+                received_ms: i as u64 * 100,
+                raw,
+                state,
+            };
+            tx.send(update).await.unwrap();
+        }
+    });
+    let config = CoachConfig {
+        rules_dir: repo().join("rules"),
+        role: None,
+        min_gap_secs: 3,
+        lang: "en".into(),
+    };
+    run_coach(
+        rx,
+        config.clone(),
+        &Collect::default(),
+        Recording::per_match(&dir),
+        None,
+    )
+    .await
+    .unwrap();
+    feeder.await.unwrap();
+
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    files.sort();
+    assert_eq!(files.len(), 2, "{files:?}");
+    assert!(files[0].to_string_lossy().ends_with("-111.jsonl"));
+    assert!(latest_recording(&dir).is_some());
+
+    let report = review_file(&files[1], config).await.unwrap().unwrap();
+    assert_eq!(report.match_id, "222");
+    assert_eq!(report.hero, "sniper");
+    assert_eq!(report.role, "pos2");
+    assert_eq!(report.death_list.len(), 1);
+    assert_eq!(
+        (report.death_list[0].clock, report.death_list[0].gold_lost),
+        (300, 600)
+    );
+    assert!(report.items.iter().any(|i| i.item == "item_dragon_lance"));
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -5,12 +5,15 @@
 //!   or a trained model later.
 //! - [`Coordinator`] owns cooldowns and pacing, so advisors stay simple.
 //! - [`RoleDetector`] works out pos1 to pos5 from where the hero lanes.
+//! - [`review`] works out the facts of a recorded game for the post-game
+//!   review.
 //! - [`Catalog`] turns rule message keys into sentences in the chosen language.
 
 pub mod advice;
 pub mod coordinator;
 pub mod history;
 pub mod i18n;
+pub mod review;
 pub mod role;
 pub mod rules;
 pub mod snapshot;
@@ -19,6 +22,7 @@ pub use advice::{Advice, Advisor};
 pub use coordinator::Coordinator;
 pub use history::History;
 pub use i18n::{Catalog, LangMeta};
+pub use review::{Report, Said};
 pub use role::{Detection, Lane, RoleDetector};
 pub use rules::{Packs, RuleEngine};
 pub use snapshot::GameSnapshot;
