@@ -12,6 +12,8 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 use voice::Speaker;
 
+pub mod steam;
+
 #[derive(Debug, Clone)]
 pub struct CoachConfig {
     pub rules_dir: PathBuf,

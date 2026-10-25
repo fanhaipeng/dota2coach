@@ -1,9 +1,10 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use coach::Catalog;
-use dota2coach::{CoachConfig, resolve_rules_dir, run_coach};
+use dota2coach::{CoachConfig, resolve_rules_dir, run_coach, steam};
 use gsi::record::{self, Recorder};
 use tokio::sync::mpsc;
 use tracing::info;
@@ -70,6 +71,19 @@ enum Cmd {
         #[arg(long, default_value_t = 1.0)]
         speed: f64,
     },
+    /// Find Dota 2 and install the GSI config file, so Dota sends game state
+    /// to the coach.
+    Setup {
+        /// The Dota 2 install folder ("dota 2 beta"), if it isn't found
+        /// automatically. In Steam: Dota 2 > Properties > Installed Files >
+        /// Browse.
+        #[arg(long)]
+        dota_dir: Option<PathBuf>,
+        #[arg(long, default_value_t = DEFAULT_PORT)]
+        port: u16,
+        #[arg(long, default_value = DEFAULT_TOKEN)]
+        token: String,
+    },
     /// Print the GSI config file to put in Dota's gamestate_integration folder.
     GsiConfig {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -114,6 +128,11 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match Cli::parse().command {
+        Cmd::Setup {
+            dota_dir,
+            port,
+            token,
+        } => setup(dota_dir, port, &token)?,
         Cmd::GsiConfig { port, token } => {
             print!("{}", gsi::server::config_file(port, &token));
         }
@@ -152,5 +171,34 @@ async fn main() -> anyhow::Result<()> {
             info!(payloads, messages = spoken.len(), "replay finished");
         }
     }
+    Ok(())
+}
+
+fn setup(dota_dir: Option<PathBuf>, port: u16, token: &str) -> anyhow::Result<()> {
+    let dota = match dota_dir.or_else(steam::find_dota) {
+        Some(dir) => dir,
+        None => anyhow::bail!(
+            "couldn't find Dota 2. In Steam, open Dota 2 > Properties > Installed Files > \
+             Browse, then run: dota2coach setup --dota-dir \"<that folder>\""
+        ),
+    };
+    if !dota.join("game").is_dir() {
+        anyhow::bail!(
+            "{} doesn't look like a Dota 2 install (no `game` folder inside)",
+            dota.display()
+        );
+    }
+    let dir = steam::gsi_dir(&dota);
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    let file = dir.join("gamestate_integration_dota2coach.cfg");
+    // Plain ASCII: Dota ignores the UTF-16 files that PowerShell's `>` writes.
+    std::fs::write(&file, gsi::server::config_file(port, token))
+        .with_context(|| format!("writing {}", file.display()))?;
+    println!("Installed the GSI config: {}", file.display());
+    println!();
+    println!("Next:");
+    println!("  1. In Steam, add -gamestateintegration to Dota 2 > Properties > Launch Options.");
+    println!("  2. Restart Dota 2 if it is running (it reads the config at startup).");
+    println!("  3. Run: dota2coach run");
     Ok(())
 }
