@@ -8,6 +8,11 @@ Rules are small [Rhai](https://rhai.rs) scripts, loaded in layers each game:
 | `roles/<role>/` | Once your position is detected at about 4:00, from the lane you play in (`pos1` to `pos5`). `--role pos3` sets it instead. |
 | `heroes/<hero>/` | Automatically, once GSI reports your hero (folder name without `npc_dota_hero_`, for example `axe`) |
 
+Role packs exist for `pos1` to `pos5`: last-hit and GPM checks against
+typical targets for cores (tune the numbers in `last_hits.rhai` and `gpm.rhai`
+for your bracket), rune control for mid, wards, rotations and stacking for
+supports.
+
 Hero folders use Dota's internal names, which don't always match the hero's
 name: Zeus is `zuus`, Troll Warlord is `troll_warlord`. Packs so far: `axe`
 (example), `slardar`, `sniper`, `troll_warlord`, `ursa`, `viper`, `zuus`.
@@ -78,7 +83,9 @@ suite checks that every shipped language has every message.
 `hero`, `xpos`, `ypos`, `level`, `alive`, `respawn_seconds`, `health_percent`,
 `mana_percent`, `buyback_cost`, `buyback_cooldown`, `smoked`, `ult_level`,
 `ult_ready` (ultimate learned, off cooldown and castable), `gold`,
-`kills`, `deaths`, `assists`, `last_hits`, `denies`, `items` (array of item
+`kills`, `deaths`, `assists`, `last_hits`, `denies`, `gpm`, `xpm`,
+`since_death` (game seconds since you last died, -1 if you haven't),
+`gold_at_death` (gold you carried into your last death), `items` (array of item
 names you carry, including the TP and neutral slots), `stash`.
 
 See `crates/coach/src/snapshot.rs` for the full definition.

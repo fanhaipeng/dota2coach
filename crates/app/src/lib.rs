@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use coach::i18n::Arg;
-use coach::{Advisor, Coordinator, GameSnapshot, Packs, RoleDetector, RuleEngine};
+use coach::{Advisor, Coordinator, GameSnapshot, History, Packs, RoleDetector, RuleEngine};
 use gsi::Update;
 use gsi::record::Recorder;
 use tokio::sync::mpsc;
@@ -43,6 +43,7 @@ pub async fn run_coach(
     )?;
     let mut coordinator = Coordinator::new(config.min_gap_secs);
     let mut detector = RoleDetector::default();
+    let mut history = History::default();
     let mut role = config.role.clone();
     let mut spoken = Vec::new();
     let mut say = |text: String| {
@@ -68,6 +69,7 @@ pub async fn run_coach(
                 "new match"
             );
             detector.reset();
+            history.reset();
             role = config.role.clone();
         }
         // `--role` wins; otherwise work it out during laning.
@@ -84,6 +86,7 @@ pub async fn run_coach(
             }
             role = Some(found.role);
         }
+        history.observe(&mut snapshot);
         snapshot.role = role.clone().unwrap_or_default();
         load_packs(&mut rules, &role, &snapshot);
 
