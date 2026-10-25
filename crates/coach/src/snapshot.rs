@@ -41,6 +41,12 @@ pub struct GameSnapshot {
     pub buyback_cost: i64,
     pub buyback_cooldown: i64,
     pub smoked: bool,
+    /// Level of the hero's ultimate; 0 until learned.
+    pub ult_level: i64,
+    /// The ultimate is learned, off cooldown and castable (mana, not silenced).
+    /// Hero rules use this rather than ability names, which change between
+    /// patches.
+    pub ult_ready: bool,
 
     pub gold: i64,
     pub kills: i64,
@@ -80,6 +86,8 @@ impl GameSnapshot {
             }
         }
 
+        let ult = state.abilities.values().find(|a| a.ultimate);
+
         Some(Self {
             match_id: map.matchid.clone(),
             game_state: map.game_state.clone(),
@@ -103,6 +111,8 @@ impl GameSnapshot {
             buyback_cost: hero.buyback_cost,
             buyback_cooldown: hero.buyback_cooldown,
             smoked: hero.smoked,
+            ult_level: ult.map_or(0, |a| a.level),
+            ult_ready: ult.is_some_and(|a| a.level > 0 && a.cooldown == 0 && a.can_cast),
             gold: player.gold,
             kills: player.kills,
             deaths: player.deaths,
@@ -140,6 +150,9 @@ pub(crate) mod tests {
         assert!(snap.in_game);
         assert_eq!(snap.gold, 1312);
         assert_eq!(snap.team, "dire");
+        // Culling Blade: level 2, castable, no cooldown.
+        assert_eq!(snap.ult_level, 2);
+        assert!(snap.ult_ready);
         assert_eq!((snap.xpos, snap.ypos), (-1820, 4200));
         assert!(snap.has_item("item_tpscroll"));
         assert!(snap.has_item("item_trusty_shovel"));

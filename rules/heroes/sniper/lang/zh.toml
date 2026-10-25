@@ -1,0 +1,4 @@
+[sniper]
+half_hp = "血量只剩一半了，退到最远射程。"
+dragon_lance = "魔龙枪到手了，站在队友后面输出。"
+assassinate_ready = "暗杀好了，残血逃跑的敌人可以补掉。"

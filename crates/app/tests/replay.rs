@@ -94,8 +94,7 @@ fn every_language_translates_every_message() {
     let root = repo().join("rules");
     let langs = coach::i18n::available(&root);
     assert!(langs.contains(&"en".to_owned()) && langs.contains(&"zh".to_owned()));
-    for pack in ["", "roles/pos1", "roles/pos3", "heroes/axe"] {
-        let dir = root.join(pack).join("lang");
+    for dir in lang_dirs(&root) {
         let keys = |lang: &str| -> Vec<String> {
             let text = std::fs::read_to_string(dir.join(format!("{lang}.toml"))).unwrap();
             let table: toml::Table = text.parse().unwrap();
@@ -107,6 +106,71 @@ fn every_language_translates_every_message() {
         let en = keys("en");
         for lang in &langs {
             assert_eq!(keys(lang), en, "{lang} messages in {}", dir.display());
+        }
+    }
+}
+
+/// `rules/lang` plus every pack's `lang` folder.
+fn lang_dirs(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut dirs = vec![root.join("lang")];
+    for kind in ["roles", "heroes"] {
+        for pack in std::fs::read_dir(root.join(kind)).unwrap() {
+            let dir = pack.unwrap().path().join("lang");
+            if dir.is_dir() {
+                dirs.push(dir);
+            }
+        }
+    }
+    dirs
+}
+
+/// Every hero pack loads, and none of its rules fail on a busy mid-game
+/// moment, in any language.
+#[test]
+fn every_hero_pack_runs() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let snapshot = GameSnapshot {
+        in_game: true,
+        clock_time: 900,
+        team: "radiant".into(),
+        role: "pos1".into(),
+        level: 14,
+        alive: true,
+        health_percent: 30,
+        mana_percent: 10,
+        ult_level: 2,
+        ult_ready: true,
+        gold: 2500,
+        items: [
+            "item_blink",
+            "item_dragon_lance",
+            "item_vladmir",
+            "item_tpscroll",
+        ]
+        .map(String::from)
+        .to_vec(),
+        ..Default::default()
+    };
+    for hero in std::fs::read_dir(root.join("heroes")).unwrap() {
+        let hero = hero.unwrap().file_name().to_string_lossy().into_owned();
+        for lang in coach::i18n::available(&root) {
+            let mut engine = RuleEngine::load(
+                &root,
+                Packs {
+                    role: None,
+                    hero: Some(hero.clone()),
+                },
+                &lang,
+            )
+            .unwrap();
+            let said = engine.advise(&snapshot);
+            let disabled: Vec<_> = engine.disabled().collect();
+            assert!(disabled.is_empty(), "{hero} ({lang}): {disabled:?}");
+            assert!(
+                said.iter().any(|a| a.rule_id.starts_with("heroes/")),
+                "{hero} ({lang}) said nothing of its own: {said:#?}"
+            );
         }
     }
 }
