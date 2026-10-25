@@ -5,7 +5,7 @@ Rules are small [Rhai](https://rhai.rs) scripts, loaded in layers each game:
 | Folder | When it loads |
 |---|---|
 | `universal/` | Every game |
-| `roles/<role>/` | When you pass `--role <role>`, for example `--role pos3` |
+| `roles/<role>/` | Once your position is detected at about 4:00, from the lane you play in (`pos1` to `pos5`). `--role pos3` sets it instead. |
 | `heroes/<hero>/` | Automatically, once GSI reports your hero (folder name without `npc_dota_hero_`, for example `axe`) |
 
 Each file defines `fn check(s)`. It returns nothing when there's nothing to
@@ -68,7 +68,8 @@ suite checks that every shipped language has every message.
 ## Fields on `s`
 
 `match_id`, `game_state`, `in_game`, `paused`, `clock_time`, `daytime`,
-`hero`, `level`, `alive`, `respawn_seconds`, `health_percent`,
+`team` (`radiant` or `dire`), `role` (`pos1` to `pos5`, empty until known),
+`hero`, `xpos`, `ypos`, `level`, `alive`, `respawn_seconds`, `health_percent`,
 `mana_percent`, `buyback_cost`, `buyback_cooldown`, `smoked`, `gold`,
 `kills`, `deaths`, `assists`, `last_hits`, `denies`, `items` (array of item
 names you carry, including the TP and neutral slots), `stash`.

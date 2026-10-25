@@ -127,3 +127,72 @@ fn flatten(prefix: &str, table: &toml::Table, out: &mut Vec<String>) {
         }
     }
 }
+
+/// Writes a recording of a laning stage spent at `pos`, one payload a second.
+fn laning_recording(name: &str, team: &str, pos: (i64, i64)) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("dota2coach-{name}-{}.jsonl", std::process::id()));
+    let mut lines = String::new();
+    for t in -10..=610 {
+        let payload = serde_json::json!({
+            "map": { "matchid": "1", "clock_time": t, "game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS" },
+            "player": { "team_name": team, "last_hits": t / 10, "gold": 300 },
+            "hero": { "name": "npc_dota_hero_slardar", "alive": true, "health_percent": 100,
+                      "xpos": pos.0, "ypos": pos.1 },
+            "items": { "teleport0": { "name": "item_tpscroll" } }
+        });
+        lines += &serde_json::json!({ "t_ms": (t + 10) * 1000, "payload": payload }).to_string();
+        lines += "\n";
+    }
+    std::fs::write(&path, lines).unwrap();
+    path
+}
+
+async fn replay_file(file: PathBuf, lang: &str) -> Vec<String> {
+    let (tx, rx) = mpsc::channel(64);
+    let reader = tokio::spawn(async move { gsi::record::replay(&file, 0.0, tx).await });
+    let config = CoachConfig {
+        rules_dir: repo().join("rules"),
+        role: None,
+        min_gap_secs: 3,
+        lang: lang.to_owned(),
+    };
+    let spoken = run_coach(rx, config, &Collect::default(), None)
+        .await
+        .unwrap();
+    reader.await.unwrap().unwrap();
+    spoken
+}
+
+#[tokio::test]
+async fn detects_the_role_and_loads_its_pack() {
+    // Dire offlane is the bottom lane.
+    let spoken = replay_file(laning_recording("offlane", "dire", (4800, -6200)), "en").await;
+    assert!(
+        spoken
+            .iter()
+            .any(|s| s == "You look like the offlaner, position 3. Coaching for that role."),
+        "{spoken:#?}"
+    );
+    // The detected pos3 pack is loaded, so its end-of-laning rule fires.
+    assert!(
+        spoken
+            .iter()
+            .any(|s| s.starts_with("Laning is ending. Look to pressure")),
+        "{spoken:#?}"
+    );
+    assert_eq!(
+        spoken
+            .iter()
+            .filter(|s| s.starts_with("You look like"))
+            .count(),
+        1
+    );
+
+    let spoken = replay_file(laning_recording("mid-zh", "radiant", (-1500, -1300)), "zh").await;
+    assert!(
+        spoken
+            .iter()
+            .any(|s| s == "看起来你在打二号位中单，接下来按这个位置给建议。"),
+        "{spoken:#?}"
+    );
+}

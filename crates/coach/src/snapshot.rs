@@ -22,8 +22,17 @@ pub struct GameSnapshot {
     pub clock_time: i64,
     pub daytime: bool,
 
+    /// `radiant` or `dire`.
+    pub team: String,
+    /// The position being coached, for example `pos3`: from `--role`, or
+    /// detected during laning. Empty until known.
+    pub role: String,
+
     /// Short hero name, for example `axe` (without `npc_dota_hero_`).
     pub hero: String,
+    /// Map position; about -8000 to 8000 on each axis, Radiant bottom left.
+    pub xpos: i64,
+    pub ypos: i64,
     pub level: i64,
     pub alive: bool,
     pub respawn_seconds: i64,
@@ -81,7 +90,11 @@ impl GameSnapshot {
             paused: map.paused,
             clock_time: map.clock_time,
             daytime: map.daytime,
+            team: player.team_name.clone(),
+            role: String::new(),
             hero: short_hero_name(&hero.name).to_owned(),
+            xpos: hero.xpos,
+            ypos: hero.ypos,
             level: hero.level,
             alive: hero.alive,
             respawn_seconds: hero.respawn_seconds,
@@ -126,6 +139,8 @@ pub(crate) mod tests {
         assert_eq!(snap.clock_time, 754);
         assert!(snap.in_game);
         assert_eq!(snap.gold, 1312);
+        assert_eq!(snap.team, "dire");
+        assert_eq!((snap.xpos, snap.ypos), (-1820, 4200));
         assert!(snap.has_item("item_tpscroll"));
         assert!(snap.has_item("item_trusty_shovel"));
         assert!(!snap.items.iter().any(|i| i == "empty"));

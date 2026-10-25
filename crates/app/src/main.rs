@@ -26,7 +26,8 @@ struct CoachArgs {
     /// Rules folder. Defaults to ./rules, then rules/ next to the executable.
     #[arg(long)]
     rules: Option<PathBuf>,
-    /// Role pack to load from rules/roles/, for example pos1 or pos3.
+    /// Role pack to load from rules/roles/, for example pos1 or pos3. Without
+    /// it, the role is detected from where you lane in the first 4 minutes.
     #[arg(long)]
     role: Option<String>,
     /// Minimum game seconds between two spoken messages.

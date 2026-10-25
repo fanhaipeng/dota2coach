@@ -47,7 +47,7 @@ never injects into the game and never sends input. It gives advice; you play.
 
 | Command | What it does |
 |---|---|
-| `dota2coach run` | Listen on `127.0.0.1:3000` and coach live. `--role pos1` loads a role pack, `--lang zh` coaches in Chinese, `--record FILE` saves the game for replaying, `--mute` prints instead of speaking. |
+| `dota2coach run` | Listen on `127.0.0.1:3000` and coach live. The role (pos1 to pos5) is detected from your lane by 4:00, or set it with `--role pos1`; `--lang zh` coaches in Chinese, `--record FILE` saves the game for replaying, `--mute` prints instead of speaking. |
 | `dota2coach replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 10` at 10x. |
 | `dota2coach gsi-config` | Print the GSI config file (`--port`, `--token` must match `run`). |
 
@@ -74,8 +74,8 @@ ones and uses the default voice. To add a Chinese voice:
 ## Rules
 
 Coaching rules are small Rhai scripts in [`rules/`](rules/README.md), loaded in
-layers: universal, then the role pack, then the hero pack (picked automatically
-from GSI). Edit them and re-run; no recompiling. Rune timings change between
+layers: universal, then the role pack (detected from where you lane), then the
+hero pack (picked automatically from GSI). Edit them and re-run; no recompiling. Rune timings change between
 patches, so check `rules/universal/runes.rhai` against the current patch.
 
 ## Layout

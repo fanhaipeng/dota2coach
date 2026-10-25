@@ -23,3 +23,11 @@ water = "水符"
 power = "能量符"
 bounty = "赏金符"
 wisdom = "智慧符"
+
+[role]
+detected = "看起来你在打{role}，接下来按这个位置给建议。"
+pos1 = "一号位大哥"
+pos2 = "二号位中单"
+pos3 = "三号位劣单"
+pos4 = "四号位辅助"
+pos5 = "五号位辅助"
