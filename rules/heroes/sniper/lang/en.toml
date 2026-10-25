@@ -1,0 +1,4 @@
+[sniper]
+half_hp = "Half health. Step back to max range."
+dragon_lance = "Dragon Lance is done. Shoot from behind your team."
+assassinate_ready = "Assassinate is ready. Finish an enemy who runs away low."

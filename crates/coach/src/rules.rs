@@ -146,6 +146,11 @@ impl RuleEngine {
         &self.catalog
     }
 
+    /// Rules disabled since the last reload because they failed.
+    pub fn disabled(&self) -> impl Iterator<Item = &str> {
+        self.broken.iter().map(String::as_str)
+    }
+
     pub fn rule_ids(&self) -> impl Iterator<Item = &str> {
         self.rules.iter().map(|r| r.id.as_str())
     }

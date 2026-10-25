@@ -1,0 +1,4 @@
+[ursa]
+blink_ready = "Blink is done. Jump on a support and Earthshock."
+roshan = "You can try Roshan now. Check the pit is clear first."
+enrage = "Low health. Use Enrage now."

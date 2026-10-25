@@ -8,6 +8,12 @@ Rules are small [Rhai](https://rhai.rs) scripts, loaded in layers each game:
 | `roles/<role>/` | Once your position is detected at about 4:00, from the lane you play in (`pos1` to `pos5`). `--role pos3` sets it instead. |
 | `heroes/<hero>/` | Automatically, once GSI reports your hero (folder name without `npc_dota_hero_`, for example `axe`) |
 
+Hero folders use Dota's internal names, which don't always match the hero's
+name: Zeus is `zuus`, Troll Warlord is `troll_warlord`. Packs so far: `axe`
+(example), `slardar`, `sniper`, `troll_warlord`, `ursa`, `viper`, `zuus`.
+Prefer `s.ult_ready` and item names over ability names in hero rules, since
+ability names change between patches more often.
+
 Each file defines `fn check(s)`. It returns nothing when there's nothing to
 say, or a map:
 
@@ -70,7 +76,8 @@ suite checks that every shipped language has every message.
 `match_id`, `game_state`, `in_game`, `paused`, `clock_time`, `daytime`,
 `team` (`radiant` or `dire`), `role` (`pos1` to `pos5`, empty until known),
 `hero`, `xpos`, `ypos`, `level`, `alive`, `respawn_seconds`, `health_percent`,
-`mana_percent`, `buyback_cost`, `buyback_cooldown`, `smoked`, `gold`,
+`mana_percent`, `buyback_cost`, `buyback_cooldown`, `smoked`, `ult_level`,
+`ult_ready` (ultimate learned, off cooldown and castable), `gold`,
 `kills`, `deaths`, `assists`, `last_hits`, `denies`, `items` (array of item
 names you carry, including the TP and neutral slots), `stash`.
 
