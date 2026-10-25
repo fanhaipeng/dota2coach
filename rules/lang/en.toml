@@ -24,3 +24,11 @@ water = "Water"
 power = "Power"
 bounty = "Bounty"
 wisdom = "Wisdom"
+
+[role]
+detected = "You look like the {role}. Coaching for that role."
+pos1 = "carry, position 1"
+pos2 = "mid, position 2"
+pos3 = "offlaner, position 3"
+pos4 = "soft support, position 4"
+pos5 = "hard support, position 5"

@@ -1,9 +1,11 @@
 //! The coaching pipeline shared by `run` (live) and `replay` (recorded):
 //! GSI updates in, spoken advice out.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use coach::{Advisor, Coordinator, GameSnapshot, Packs, RuleEngine};
+use coach::i18n::Arg;
+use coach::{Advisor, Coordinator, GameSnapshot, Packs, RoleDetector, RuleEngine};
 use gsi::Update;
 use gsi::record::Recorder;
 use tokio::sync::mpsc;
@@ -13,7 +15,7 @@ use voice::Speaker;
 #[derive(Debug, Clone)]
 pub struct CoachConfig {
     pub rules_dir: PathBuf,
-    /// Role pack to load, for example `pos1`. Role inference comes later.
+    /// Role pack to load, for example `pos1`. `None` detects it during laning.
     pub role: Option<String>,
     /// Minimum game seconds between two spoken messages.
     pub min_gap_secs: i64,
@@ -38,7 +40,13 @@ pub async fn run_coach(
         &config.lang,
     )?;
     let mut coordinator = Coordinator::new(config.min_gap_secs);
+    let mut detector = RoleDetector::default();
+    let mut role = config.role.clone();
     let mut spoken = Vec::new();
+    let mut say = |text: String| {
+        speaker.say(&text);
+        spoken.push(text);
+    };
 
     while let Some(update) = rx.recv().await {
         if let Some(rec) = recorder.as_mut()
@@ -48,7 +56,7 @@ pub async fn run_coach(
             recorder = None;
         }
 
-        let Some(snapshot) = GameSnapshot::from_state(&update.state) else {
+        let Some(mut snapshot) = GameSnapshot::from_state(&update.state) else {
             continue;
         };
         if coordinator.observe(&snapshot) {
@@ -57,8 +65,25 @@ pub async fn run_coach(
                 hero = snapshot.hero,
                 "new match"
             );
+            detector.reset();
+            role = config.role.clone();
         }
-        load_hero_pack(&mut rules, &config, &snapshot);
+        // `--role` wins; otherwise work it out during laning.
+        if config.role.is_none()
+            && let Some(found) = detector.observe(&snapshot)
+        {
+            info!(role = found.role, lane = ?found.lane, "detected role");
+            let args = BTreeMap::from([(
+                "role".to_owned(),
+                Arg::Keys(vec![format!("role.{}", found.role)]),
+            )]);
+            if let Some(text) = rules.catalog().render("role.detected", &args) {
+                say(text);
+            }
+            role = Some(found.role);
+        }
+        snapshot.role = role.clone().unwrap_or_default();
+        load_packs(&mut rules, &role, &snapshot);
 
         let candidates = rules.advise(&snapshot);
         if let Some(advice) = coordinator.select(&snapshot, candidates) {
@@ -68,24 +93,24 @@ pub async fn run_coach(
                 "{}",
                 advice.message
             );
-            speaker.say(&advice.message);
-            spoken.push(advice.message);
+            say(advice.message);
         }
     }
     Ok(spoken)
 }
 
-/// Reloads rules with the hero pack once the hero is known or changes.
-fn load_hero_pack(rules: &mut RuleEngine, config: &CoachConfig, snapshot: &GameSnapshot) {
-    if rules.packs().hero.as_deref() == Some(snapshot.hero.as_str()) {
-        return;
-    }
+/// Reloads rules when the role or hero pack changes: the hero once GSI reports
+/// it, the role once it's detected.
+fn load_packs(rules: &mut RuleEngine, role: &Option<String>, snapshot: &GameSnapshot) {
     let packs = Packs {
-        role: config.role.clone(),
+        role: role.clone(),
         hero: Some(snapshot.hero.clone()),
     };
+    if *rules.packs() == packs {
+        return;
+    }
     if let Err(err) = rules.reload(packs) {
-        warn!(%err, "couldn't load rules for this hero; keeping the previous set");
+        warn!(%err, "couldn't load rules for this role or hero; keeping the previous set");
     }
 }
 
