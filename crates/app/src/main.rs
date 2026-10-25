@@ -2,12 +2,13 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use coach::Catalog;
 use dota2coach::{CoachConfig, resolve_rules_dir, run_coach};
 use gsi::record::{self, Recorder};
 use tokio::sync::mpsc;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-use voice::{ConsoleSpeaker, Speaker};
+use voice::{ConsoleSpeaker, Speaker, VoiceRequest};
 
 const DEFAULT_PORT: u16 = 3000;
 const DEFAULT_TOKEN: &str = "dota2coach-local";
@@ -31,6 +32,12 @@ struct CoachArgs {
     /// Minimum game seconds between two spoken messages.
     #[arg(long, default_value_t = 3)]
     gap: i64,
+    /// Language to coach in: a file name from rules/lang/, for example en or zh.
+    #[arg(long, default_value = "en")]
+    lang: String,
+    /// Speak with this installed voice instead of the language's default one.
+    #[arg(long)]
+    voice: Option<String>,
     /// Print advice instead of speaking it.
     #[arg(long)]
     mute: bool,
@@ -77,15 +84,22 @@ impl CoachArgs {
             rules_dir: resolve_rules_dir(self.rules.as_deref()),
             role: self.role.clone(),
             min_gap_secs: self.gap,
+            lang: self.lang.clone(),
         }
     }
 
-    fn speaker(&self) -> Box<dyn Speaker> {
+    /// Fails early, before Dota or a replay starts, if the language doesn't
+    /// exist.
+    fn speaker(&self) -> anyhow::Result<Box<dyn Speaker>> {
+        let config = self.config();
+        let catalog = Catalog::load(&config.lang, std::slice::from_ref(&config.rules_dir))?;
         if self.mute {
-            Box::new(ConsoleSpeaker)
-        } else {
-            voice::default_speaker()
+            return Ok(Box::new(ConsoleSpeaker));
         }
+        Ok(voice::default_speaker(&VoiceRequest {
+            lang: catalog.meta().voice.clone(),
+            name: self.voice.clone(),
+        }))
     }
 }
 
@@ -120,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
                     tracing::error!(%err, "GSI server stopped");
                 }
             });
-            let speaker = coach.speaker();
+            let speaker = coach.speaker()?;
             tokio::select! {
                 result = run_coach(rx, coach.config(), speaker.as_ref(), recorder) => {
                     result?;
@@ -131,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Replay { file, coach, speed } => {
             let (tx, rx) = mpsc::channel(256);
             let reader = tokio::spawn(async move { record::replay(&file, speed, tx).await });
-            let speaker = coach.speaker();
+            let speaker = coach.speaker()?;
             let spoken = run_coach(rx, coach.config(), speaker.as_ref(), None).await?;
             let payloads = reader.await??;
             info!(payloads, messages = spoken.len(), "replay finished");

@@ -17,6 +17,8 @@ pub struct CoachConfig {
     pub role: Option<String>,
     /// Minimum game seconds between two spoken messages.
     pub min_gap_secs: i64,
+    /// Language code of the message catalogs, for example `en` or `zh`.
+    pub lang: String,
 }
 
 /// Consumes updates until the channel closes, speaking advice as it goes.
@@ -33,6 +35,7 @@ pub async fn run_coach(
             role: config.role.clone(),
             hero: None,
         },
+        &config.lang,
     )?;
     let mut coordinator = Coordinator::new(config.min_gap_secs);
     let mut spoken = Vec::new();

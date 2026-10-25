@@ -14,17 +14,56 @@ say, or a map:
 ```rhai
 fn check(s) {
     if s.clock_time > 120 && !s.items.contains("item_tpscroll") {
-        #{ say: "You have no TP scroll.", priority: 2, cooldown: 90 }
+        #{ msg: "no_tp", priority: 2, cooldown: 90 }
     }
 }
 ```
 
-- `say`: the sentence to speak.
+- `msg`: a message key; the words come from the language files (below).
+- `args`: values for the message's `{placeholders}`, for example
+  `args: #{ gold: s.gold }`. An array is a list of message keys, each
+  translated and joined the way the language lists things ("Power and
+  Bounty", "能量符和赏金符").
+- `say`: instead of `msg`, a literal sentence spoken as it is in every
+  language. Handy while drafting a rule.
 - `priority`: 1 reminder, 2 act soon, 3 act now. The most urgent message wins. Default 1.
 - `cooldown`: game seconds before this rule can speak again. Default 60.
 
 A rule can also return an array of maps. The coach speaks at most one message
 every few seconds (`--gap`) and stays quiet while the game is paused.
+
+## Languages
+
+Run with `--lang en` (default) or `--lang zh`. The words for each message key
+live in TOML files named after the language, next to the rules that use them:
+
+| File | Holds |
+|---|---|
+| `lang/<code>.toml` | Messages of the universal rules |
+| `roles/<role>/lang/<code>.toml` | Messages of that role pack |
+| `heroes/<hero>/lang/<code>.toml` | Messages of that hero pack |
+
+```toml
+no_tp = "You have no TP scroll."     # key no_tp
+
+[_meta]
+name = "English"
+voice = "en-US"          # which installed voice to speak with
+list_separator = ", "
+list_last = " and "
+
+[gold]
+unspent = "You have {gold} gold. Go spend it."   # key gold.unspent
+```
+
+Tables become dotted keys, and top-level keys must come before the first
+table. Prefix pack messages with the pack name (`axe.blink_ready`) so they
+don't clash.
+
+**Adding a language** is adding files, no code: copy every `en.toml` to
+`<code>.toml`, translate the values and set `[_meta]`. A missing message
+falls back to English, and the coach logs which ones at startup. The test
+suite checks that every shipped language has every message.
 
 ## Fields on `s`
 
