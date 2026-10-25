@@ -1,82 +1,173 @@
 # dota2coach
 
-A voice coach for Dota 2. It listens to the game through Valve's official
-[Game State Integration](https://github.com/antonpup/dota2gsi) (GSI) feed and
-speaks short reminders at the right moment: rune timings, missing TP scroll,
-low health, unspent gold, buyback, plus role- and hero-specific advice.
+A voice coach for Dota 2. While you play, it speaks short reminders at the
+right moment: rune timings, a missing TP scroll, low health, unspent gold,
+buyback, plus advice for your role and hero. It speaks English or Chinese.
 
-It only uses what GSI gives a player (your own hero), never reads game memory,
-never injects into the game and never sends input. It gives advice; you play.
+It only reads Valve's official
+[Game State Integration](https://github.com/antonpup/dota2gsi)
+(GSI) feed, which Dota sends to programs you allow, and only about your own
+hero. It never reads game memory, never injects into the game and never sends
+input, so it is as safe to use as any stats overlay. It gives advice; you play.
 
-## Quick start
+## Getting started
 
-1. **Build** (needs [Rust](https://rustup.rs); on Windows also the Visual
-   Studio Build Tools "Desktop development with C++" workload):
+Setup takes about five minutes and is the same on Windows, macOS and Linux.
 
-   ```
-   cargo build --release
-   ```
+### 1. Get the coach
 
-   Or download a build for your OS from the latest
-   [CI run](../../actions) (`dota2coach-<OS>` artifact).
+**Download** the zip for your OS from the [Releases](../../releases) page
+(`dota2coach-Windows-X64.zip`, `dota2coach-macOS-ARM64.zip` or
+`dota2coach-Linux-X64.zip`) and unzip it anywhere, for example
+`Documents\dota2coach`. Keep the `rules` folder next to the program.
 
-2. **Tell Dota where to send game state.** Save the config into Dota's GSI folder:
+On macOS, allow the downloaded program to run once from Terminal, in the
+unzipped folder:
 
-   ```
-   dota2coach gsi-config > gamestate_integration_dota2coach.cfg
-   ```
+```
+chmod +x dota2coach && xattr -c dota2coach
+```
 
-   | OS | Folder |
-   |---|---|
-   | Windows | `C:\Program Files (x86)\Steam\steamapps\common\dota 2 beta\game\dota\cfg\gamestate_integration\` |
-   | macOS | `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/cfg/gamestate_integration/` |
-   | Linux | `~/.local/share/Steam/steamapps/common/dota 2 beta/game/dota/cfg/gamestate_integration/` |
+Or **build it yourself** (see [Building from source](#building-from-source)).
 
-   Create the `gamestate_integration` folder if it doesn't exist, then add
-   `-gamestateintegration` to Dota 2's launch options in Steam.
+The commands below are typed in a terminal opened in the coach's folder:
+PowerShell on Windows (in File Explorer, Shift + right-click the folder >
+*Open in Terminal*), Terminal on macOS and Linux. On Windows write
+`.\dota2coach.exe`, on macOS and Linux `./dota2coach`.
 
-3. **Run the coach, then start Dota:**
+### 2. Connect it to Dota
 
-   ```
-   dota2coach run --role pos3 --record games/latest.jsonl
-   ```
+```
+.\dota2coach.exe setup
+```
 
-   A lobby game with bots is the easiest way to try it.
+This finds Dota 2 in any of your Steam libraries (including other drives such
+as `F:\SteamLibrary`) and installs a small config file that tells Dota to send
+game state to the coach. If it can't find Dota, open Steam > right-click
+Dota 2 > *Properties* > *Installed Files* > *Browse*, copy that folder's path
+and run `.\dota2coach.exe setup --dota-dir "<that path>"`.
 
-## Commands
+Then, once, in Steam: right-click Dota 2 > *Properties* > *General* >
+*Launch Options*, and add `-gamestateintegration` (after a space if something
+is already there). Restart Dota if it was running: it only reads the config
+at startup.
+
+### 3. Play
+
+Start the coach first, then Dota:
+
+```
+.\dota2coach.exe run
+```
+
+Or in Chinese:
+
+```
+.\dota2coach.exe run --lang zh
+```
+
+Start a game (a lobby with bots is the easiest way to try it). Once you have a
+hero, the coach window prints `new match` and loads your hero's advice. At
+about 4:00 it tells you which role it thinks you are playing, from the lane
+you are in, and switches to that role's advice. Press Ctrl+C to stop it.
+
+If Windows Firewall asks about the coach, allowing private networks is enough;
+it only listens on your own computer (`127.0.0.1`).
+
+## Options
 
 | Command | What it does |
 |---|---|
-| `dota2coach run` | Listen on `127.0.0.1:3000` and coach live. The role (pos1 to pos5) is detected from your lane by 4:00, or set it with `--role pos1`; `--lang zh` coaches in Chinese, `--record FILE` saves the game for replaying, `--mute` prints instead of speaking. |
-| `dota2coach replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 10` at 10x. |
-| `dota2coach gsi-config` | Print the GSI config file (`--port`, `--token` must match `run`). |
+| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking; `--record game.jsonl` to save the game for replaying. |
+| `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
+| `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
+| `gsi-config` | Print the GSI config instead of installing it. |
 
 Set `RUST_LOG=debug` to see every rule that fires.
 
-## Speech
+## Voices and languages
 
-Uses the speech engine the OS already has: `System.Speech` through PowerShell
-on Windows, `say` on macOS, `spd-say` or `espeak-ng` on Linux. Without one,
-advice is printed.
+The coach uses the speech your OS already has, and picks an installed voice
+for the language: `System.Speech` on Windows, `say` on macOS, `spd-say` or
+`espeak-ng` on Linux. Without one, advice is printed.
 
-`--lang` picks the language (`en` or `zh`, see [Languages](rules/README.md#languages)),
-and the coach picks an installed voice for it. `--voice "<name>"` uses a
-specific voice instead. If no voice matches, the coach logs the installed
-ones and uses the default voice. To add a Chinese voice:
+For Chinese you need a Chinese voice:
 
-- **Windows:** Settings > Time & language > Language & region > add
-  **Chinese (Simplified, China)** with the *Text-to-speech* feature
-  (Microsoft Huihui). Restart the coach afterwards.
+- **Windows:** Settings > Time & language > Language & region > *Add a
+  language* > **Chinese (Simplified, China)**, with *Text-to-speech* ticked
+  (you can untick the display language). Then restart the coach. It should
+  log `using voice voice="Microsoft Huihui Desktop"`.
 - **macOS:** System Settings > Accessibility > Spoken Content > System Voice >
   Manage Voices > Chinese (China mainland), for example Tingting.
-- **Linux:** `espeak-ng` includes Mandarin (`cmn`).
+- **Linux:** `espeak-ng` includes Mandarin.
+
+If no voice matches, the coach logs the installed voices; pass one with
+`--voice "<name>"`. More languages can be added without code: see
+[Languages](rules/README.md#languages).
+
+## Troubleshooting
+
+**The coach never prints `new match`.**
+1. Check the config is installed: run `setup` again and look at the path it
+   prints. It must be inside the same Dota install Steam launches.
+2. Check the launch option `-gamestateintegration` is set.
+3. Fully quit and restart Dota after installing the config.
+4. Start the coach before entering a game, and keep its window open.
+5. If you wrote the config yourself with PowerShell's `>`, it was saved as
+   UTF-16, which Dota ignores. Use `setup` instead.
+
+**"Failed to start process for this game: OS Error 0" (macOS).** This is a
+Steam problem, not the coach's. Clear the launch options to confirm, then try
+turning off Steam Cloud for Dota, verifying the game files, reinstalling
+Rosetta (`softwareupdate --install-rosetta --agree-to-license`) or
+reinstalling Steam.
+
+**It speaks English words in Chinese mode, or nothing at all.** No voice for
+the language is installed: see [Voices and languages](#voices-and-languages).
+
+**It said the wrong role.** Pass `--role` (for example `--role pos3`).
+Detection looks at your lane between 0:30 and 4:00, so rotating a lot early
+can confuse it.
+
+## Building from source
+
+Install [Rust](https://rustup.rs) and Git. On Windows also install the Visual
+Studio Build Tools with the "Desktop development with C++" workload:
+
+```
+winget install Git.Git
+winget install Rustlang.Rustup
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+(If winget reports Build Tools are already installed but fails to upgrade,
+add the C++ workload from the Visual Studio Installer instead.)
+
+Then:
+
+```
+git clone https://github.com/fanhaipeng/dota2coach.git
+cd dota2coach
+cargo test
+cargo build --release
+```
+
+The program is `target/release/dota2coach` (`.exe` on Windows); run it from
+the repository folder so it finds `rules/`. Try it without Dota on the sample
+game: `dota2coach replay fixtures/sample_game.jsonl --speed 5`.
+
+Publishing a release: push a tag such as `v0.1.0`. CI builds every OS and
+attaches the zips to a GitHub Release.
 
 ## Rules
 
 Coaching rules are small Rhai scripts in [`rules/`](rules/README.md), loaded in
 layers: universal, then the role pack (detected from where you lane), then the
-hero pack (picked automatically from GSI). Edit them and re-run; no recompiling. Rune timings change between
-patches, so check `rules/universal/runes.rhai` against the current patch.
+hero pack (picked automatically from GSI). Edit them and re-run; no
+recompiling. Anyone can add a hero or role pack, or a language, by adding a
+folder or file: see [rules/README.md](rules/README.md). Rune timings change
+between patches, so check `rules/universal/runes.rhai` against the current
+patch.
 
 ## Layout
 
