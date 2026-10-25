@@ -31,3 +31,17 @@ pos2 = "二号位中单"
 pos3 = "三号位劣单"
 pos4 = "四号位辅助"
 pos5 = "五号位辅助"
+
+[wisdom]
+soon = "智慧神祠15秒后可以领取。"
+
+[death]
+gold = "你死的时候身上有{gold}金钱，打架前先把钱花掉。"
+many = "已经死了{deaths}次了，出装之前打得稳一点。"
+
+[farm]
+last_hits_behind = "{minutes}分钟{last_hits}个正补，目标是{target}个。"
+gpm_behind = "你的发育落后了，每分钟只有{gpm}金钱，去找更安全的钱打。"
+
+[support]
+wards = "你身上没有眼，去拿眼，保持视野。"

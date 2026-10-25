@@ -32,3 +32,17 @@ pos2 = "mid, position 2"
 pos3 = "offlaner, position 3"
 pos4 = "soft support, position 4"
 pos5 = "hard support, position 5"
+
+[wisdom]
+soon = "Wisdom shrines in 15 seconds."
+
+[death]
+gold = "You died with {gold} gold. Spend it before you fight."
+many = "That's {deaths} deaths. Play safer until your items are done."
+
+[farm]
+last_hits_behind = "{last_hits} last hits at {minutes} minutes. Aim for {target}."
+gpm_behind = "Your farm is behind at {gpm} gold per minute. Find safer farm."
+
+[support]
+wards = "You have no wards. Pick some up and keep vision."

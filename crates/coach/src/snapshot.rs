@@ -54,6 +54,13 @@ pub struct GameSnapshot {
     pub assists: i64,
     pub last_hits: i64,
     pub denies: i64,
+    pub gpm: i64,
+    pub xpm: i64,
+    /// Game seconds since the hero last died; -1 if it hasn't. Filled by
+    /// [`History`](crate::History).
+    pub since_death: i64,
+    /// Gold the hero carried when it last died. Filled by `History`.
+    pub gold_at_death: i64,
 
     /// Item names carried by the hero: inventory, backpack, TP slot and neutral
     /// slot, without empty slots. For example `["item_blink", "item_tpscroll"]`.
@@ -119,6 +126,10 @@ impl GameSnapshot {
             assists: player.assists,
             last_hits: player.last_hits,
             denies: player.denies,
+            gpm: player.gpm,
+            xpm: player.xpm,
+            since_death: -1,
+            gold_at_death: 0,
             items,
             stash,
         })

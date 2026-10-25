@@ -260,3 +260,56 @@ async fn detects_the_role_and_loads_its_pack() {
         "{spoken:#?}"
     );
 }
+
+/// Over a struggling game (no farm, no wards, dying every minute), every
+/// universal and role rule fires at least once and none fails, in every
+/// language. Catches typos in field names and message keys.
+#[test]
+fn every_role_rule_fires_in_a_bad_game() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    use std::collections::BTreeSet;
+    let root = repo().join("rules");
+    for role in std::fs::read_dir(root.join("roles")).unwrap() {
+        let role = role.unwrap().file_name().to_string_lossy().into_owned();
+        for lang in coach::i18n::available(&root) {
+            let mut engine = RuleEngine::load(
+                &root,
+                Packs {
+                    role: Some(role.clone()),
+                    hero: None,
+                },
+                &lang,
+            )
+            .unwrap();
+            let mut fired = BTreeSet::new();
+            for t in -30..1900 {
+                let snapshot = GameSnapshot {
+                    in_game: true,
+                    clock_time: t,
+                    role: role.clone(),
+                    alive: true,
+                    health_percent: if t % 100 < 50 { 100 } else { 20 },
+                    gold: 2500,
+                    deaths: 5,
+                    since_death: t.rem_euclid(60),
+                    gold_at_death: 2000,
+                    buyback_cost: 3000,
+                    last_hits: 1,
+                    gpm: 200,
+                    ..Default::default()
+                };
+                for advice in engine.advise(&snapshot) {
+                    assert!(!advice.message.contains('{'), "{lang}: {}", advice.message);
+                    fired.insert(advice.rule_id);
+                }
+            }
+            let disabled: Vec<_> = engine.disabled().collect();
+            assert!(disabled.is_empty(), "{role} ({lang}): {disabled:?}");
+            let silent: Vec<_> = engine
+                .rule_ids()
+                .filter(|id| !fired.contains(*id))
+                .collect();
+            assert!(silent.is_empty(), "{role} ({lang}) never fired: {silent:?}");
+        }
+    }
+}
