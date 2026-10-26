@@ -87,6 +87,8 @@ pub struct Report {
     pub items: Vec<ItemTiming>,
     pub banked: Banked,
     pub advice: Vec<Said>,
+    /// The hero at the start of each game minute, for the coach's write-up.
+    pub timeline: Vec<Minute>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -113,6 +115,22 @@ pub struct Death {
 pub struct ItemTiming {
     pub clock: i64,
     pub item: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Minute {
+    pub minute: i64,
+    pub level: i64,
+    pub kills: i64,
+    pub deaths: i64,
+    pub assists: i64,
+    pub last_hits: i64,
+    pub denies: i64,
+    pub gold: i64,
+    pub gpm: i64,
+    pub xpm: i64,
+    pub alive: bool,
+    pub lane: Option<&'static str>,
 }
 
 /// Time spent alive with more than [`BANKED_GOLD`].
@@ -155,11 +173,7 @@ pub fn analyze(snapshots: &[GameSnapshot], said: &[Said]) -> Option<Report> {
         {
             deaths.push(Death {
                 clock: s.clock_time,
-                lane: lane_at(&p.team, p.xpos, p.ypos).map(|lane| match lane {
-                    Lane::Safe => "safe",
-                    Lane::Mid => "mid",
-                    Lane::Off => "off",
-                }),
+                lane: lane_name(p),
                 gold_carried: p.gold,
                 gold_lost: (p.gold - s.gold).max(0),
                 had_tp: p.has_item("item_tpscroll"),
@@ -216,7 +230,41 @@ pub fn analyze(snapshots: &[GameSnapshot], said: &[Said]) -> Option<Report> {
         items,
         banked: banked(snapshots),
         advice: said.to_vec(),
+        timeline: timeline(snapshots),
     })
+}
+
+fn lane_name(s: &GameSnapshot) -> Option<&'static str> {
+    lane_at(&s.team, s.xpos, s.ypos).map(|lane| match lane {
+        Lane::Safe => "safe",
+        Lane::Mid => "mid",
+        Lane::Off => "off",
+    })
+}
+
+fn timeline(snapshots: &[GameSnapshot]) -> Vec<Minute> {
+    let mut out: Vec<Minute> = Vec::new();
+    for s in snapshots.iter().filter(|s| s.in_game && s.clock_time >= 0) {
+        let minute = s.clock_time / 60;
+        if out.last().is_some_and(|m| m.minute >= minute) {
+            continue;
+        }
+        out.push(Minute {
+            minute,
+            level: s.level,
+            kills: s.kills,
+            deaths: s.deaths,
+            assists: s.assists,
+            last_hits: s.last_hits,
+            denies: s.denies,
+            gold: s.gold,
+            gpm: s.gpm,
+            xpm: s.xpm,
+            alive: s.alive,
+            lane: lane_name(s),
+        });
+    }
+    out
 }
 
 fn banked(snapshots: &[GameSnapshot]) -> Banked {
@@ -519,6 +567,13 @@ mod tests {
                 longest_secs: 60,
                 longest_from: 180
             }
+        );
+        // One row per minute from 0:00 to 11:00.
+        assert_eq!(r.timeline.len(), 12);
+        assert_eq!(r.timeline[11].minute, 11);
+        assert_eq!(
+            (r.timeline[5].last_hits, r.timeline[5].lane),
+            (25, Some("safe"))
         );
     }
 

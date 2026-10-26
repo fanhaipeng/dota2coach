@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use coach::Catalog;
+use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
     CoachConfig, Recording, latest_recording, resolve_rules_dir, review_file, run_coach, steam,
 };
@@ -87,6 +88,13 @@ enum Cmd {
         /// Print the facts as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// Add a coach's write-up by Claude: your costliest mistakes, one thing
+        /// done well and what to focus on next game. Needs ANTHROPIC_API_KEY.
+        #[arg(long)]
+        coach: bool,
+        /// Claude model for the write-up.
+        #[arg(long, default_value = Claude::DEFAULT_MODEL, requires = "coach")]
+        model: String,
     },
     /// Coach a recorded game, without Dota running.
     Replay {
@@ -216,7 +224,11 @@ async fn main() -> anyhow::Result<()> {
             lang,
             role,
             json,
+            coach,
+            model,
         } => {
+            // Fail on a missing key before spending time on the replay.
+            let reviewer = coach.then(|| Claude::from_env(Some(model))).transpose()?;
             let file = match file.or_else(|| latest_recording(&games)) {
                 Some(file) => file,
                 None => anyhow::bail!(
@@ -235,10 +247,27 @@ async fn main() -> anyhow::Result<()> {
             let Some(report) = review_file(&file, config).await? else {
                 anyhow::bail!("{} has no match in it", file.display());
             };
-            if json {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-            } else {
+            if !json {
                 print!("{}", report.render(&catalog));
+            }
+            let writeup = match &reviewer {
+                Some(reviewer) => {
+                    eprintln!("\nAsking the coach for a write-up...");
+                    Some(reviewer.write_up(&report, catalog.meta()).await?)
+                }
+                None => None,
+            };
+            match (json, writeup) {
+                (true, None) => println!("{}", serde_json::to_string_pretty(&report)?),
+                (true, Some(writeup)) => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "facts": report,
+                        "coach": writeup,
+                    }))?
+                ),
+                (false, Some(writeup)) => print!("\n{}", writeup.render(&catalog)),
+                (false, None) => {}
             }
         }
     }

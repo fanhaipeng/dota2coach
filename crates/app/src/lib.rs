@@ -15,6 +15,7 @@ use tracing::{info, warn};
 use voice::Speaker;
 
 pub mod steam;
+pub mod writeup;
 
 /// Where payloads are saved while coaching.
 pub enum Recording {
