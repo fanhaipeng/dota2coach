@@ -87,9 +87,12 @@ had warned you about just before), your item timings, how long you sat on
 unspent gold, and what the coach told you most often. Add `--lang zh` for
 Chinese, or pass a file from `games` to review an older game.
 
-For a coach's write-up on top of the facts (your costliest mistakes, one
-thing you did well and one thing to focus on next game), add `--coach`. Claude
-writes it, so it needs your own Anthropic API key, created in the
+This needs no account or API key and is free.
+
+**Optional:** for a coach's write-up on top of the facts (your costliest
+mistakes, one thing you did well and one thing to focus on next game), add
+`--coach`. Without it, nothing is sent anywhere. Claude writes the write-up,
+so it needs your own Anthropic API key, created in the
 [Claude Console](https://platform.claude.com). Set it once, then open a new
 terminal:
 
@@ -110,7 +113,7 @@ it only listens on your own computer (`127.0.0.1`).
 | Command | What it does |
 |---|---|
 | `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. |
-| `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong, `--coach` for Claude's write-up (needs `ANTHROPIC_API_KEY`; `--model` picks the Claude model). |
+| `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong, `--coach` for an optional write-up by Claude (uses your own API credit; needs `ANTHROPIC_API_KEY`; `--model` picks the Claude model). |
 | `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
 | `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
 | `gsi-config` | Print the GSI config instead of installing it. |
