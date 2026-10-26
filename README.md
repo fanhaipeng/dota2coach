@@ -87,6 +87,24 @@ had warned you about just before), your item timings, how long you sat on
 unspent gold, and what the coach told you most often. Add `--lang zh` for
 Chinese, or pass a file from `games` to review an older game.
 
+This needs no account or API key and is free.
+
+**Optional:** for a coach's write-up on top of the facts (your costliest
+mistakes, one thing you did well and one thing to focus on next game), add
+`--coach`. Without it, nothing is sent anywhere. Claude writes the write-up,
+so it needs your own Anthropic API key, created in the
+[Claude Console](https://platform.claude.com). Set it once, then open a new
+terminal:
+
+```
+setx ANTHROPIC_API_KEY "sk-ant-..."
+.\dota2coach.exe review --coach --lang zh
+```
+
+On macOS or Linux, `export ANTHROPIC_API_KEY=sk-ant-...` instead. Only the
+facts of the game are sent, not the recording. A review costs a few cents of
+API usage.
+
 If Windows Firewall asks about the coach, allowing private networks is enough;
 it only listens on your own computer (`127.0.0.1`).
 
@@ -95,7 +113,7 @@ it only listens on your own computer (`127.0.0.1`).
 | Command | What it does |
 |---|---|
 | `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. |
-| `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong. |
+| `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong, `--coach` for an optional write-up by Claude (uses your own API credit; needs `ANTHROPIC_API_KEY`; `--model` picks the Claude model). |
 | `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
 | `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
 | `gsi-config` | Print the GSI config instead of installing it. |
@@ -198,7 +216,7 @@ patch.
 ## Roadmap
 
 1. GSI, predefined rules and voice on Windows, macOS and Linux (done).
-2. Post-game review: the facts (`review`, done), then an LLM write-up and trends across games.
+2. Post-game review: the facts (`review`, done), a coach's write-up by Claude (`review --coach`, done), then trends across games.
 3. Minimap vision sidecar (prototype in Python, port to Rust; Windows first).
 4. Live LLM advice triggered by game events.
 5. A small trained model, compared against the rules.
