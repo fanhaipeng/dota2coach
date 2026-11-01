@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 const HERO_PREFIX: &str = "npc_dota_hero_";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GameSnapshot {
     pub match_id: String,
     /// For example `DOTA_GAMERULES_STATE_GAME_IN_PROGRESS`.
@@ -69,7 +70,23 @@ pub struct GameSnapshot {
     pub items: Vec<String>,
     /// Item names sitting in the stash.
     pub stash: Vec<String>,
+
+    /// The fields below come from the screen's top bar (`run --screen`).
+    /// `screen` is false when it isn't being read, and the counts stay 0.
+    pub screen: bool,
+    pub enemies_dead: i64,
+    /// Dead enemies with at least [`LONG_RESPAWN`] seconds left to respawn.
+    pub enemies_dead_long: i64,
+    /// Seconds until the first of those respawns: how long the team has to
+    /// use the advantage.
+    pub dead_window: i64,
+    /// Teammates dead, not counting you.
+    pub allies_dead: i64,
 }
+
+/// A dead enemy with this many seconds left counts as out of the game for long
+/// enough to take an objective.
+pub const LONG_RESPAWN: i64 = 20;
 
 impl GameSnapshot {
     /// Builds a snapshot, or `None` when the payload isn't from a match with a
@@ -135,6 +152,7 @@ impl GameSnapshot {
             gold_at_death: 0,
             items,
             stash,
+            ..Default::default()
         })
     }
 

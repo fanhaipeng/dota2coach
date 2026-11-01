@@ -107,13 +107,14 @@ pub struct CoachConfig {
 
 /// Consumes updates until the channel closes, speaking advice as it goes.
 /// Returns every message that was spoken, in order. `observe`, if given, sees
-/// every snapshot after the role and history are filled in.
+/// every snapshot after the role and history are filled in, and can add to it
+/// (the screen fields) before the rules run.
 pub async fn run_coach(
     mut rx: mpsc::Receiver<Update>,
     config: CoachConfig,
     speaker: &dyn Speaker,
     mut recording: Recording,
-    mut observe: Option<&mut dyn FnMut(&GameSnapshot)>,
+    mut observe: Option<&mut dyn FnMut(&mut GameSnapshot)>,
 ) -> anyhow::Result<Vec<Said>> {
     let mut rules = RuleEngine::load(
         &config.rules_dir,
@@ -174,7 +175,7 @@ pub async fn run_coach(
         snapshot.role = role.clone().unwrap_or_default();
         load_packs(&mut rules, &role, &snapshot);
         if let Some(observe) = observe.as_mut() {
-            observe(&snapshot);
+            observe(&mut snapshot);
         }
 
         let candidates = rules.advise(&snapshot);
@@ -204,7 +205,7 @@ pub async fn review_file(path: &Path, config: CoachConfig) -> anyhow::Result<Opt
     let file = path.to_owned();
     let reader = tokio::spawn(async move { record::replay(&file, 0.0, tx).await });
     let mut snapshots = Vec::new();
-    let mut collect = |s: &GameSnapshot| snapshots.push(s.clone());
+    let mut collect = |s: &mut GameSnapshot| snapshots.push(s.clone());
     let said = run_coach(rx, config, &Silent, Recording::Off, Some(&mut collect)).await?;
     reader.await??;
     Ok(coach::review::analyze(&snapshots, &said))
@@ -255,6 +256,30 @@ pub fn resolve_rules_dir(explicit: Option<&Path>) -> PathBuf {
         .and_then(|exe| exe.parent().map(|dir| dir.join("rules")))
         .filter(|dir| dir.is_dir())
         .unwrap_or(local)
+}
+
+/// Fills the snapshot's screen fields from a top-bar reading. Does nothing
+/// until GSI has said which team the player is on.
+pub fn apply_top_bar(s: &mut GameSnapshot, bar: &vision::topbar::TopBar) {
+    let (allies, enemies) = match s.team.as_str() {
+        "radiant" => (&bar.radiant, &bar.dire),
+        "dire" => (&bar.dire, &bar.radiant),
+        _ => return,
+    };
+    let long: Vec<i64> = enemies
+        .iter()
+        .filter(|slot| slot.dead)
+        .filter_map(|slot| slot.respawn.map(i64::from))
+        .filter(|secs| *secs >= coach::snapshot::LONG_RESPAWN)
+        .collect();
+    let dead =
+        |side: &[vision::topbar::Slot; 5]| side.iter().filter(|slot| slot.dead).count() as i64;
+    s.screen = true;
+    s.enemies_dead = dead(enemies);
+    s.enemies_dead_long = long.len() as i64;
+    s.dead_window = long.iter().copied().min().unwrap_or(0);
+    // The top bar shows you too; GSI knows whether you're alive.
+    s.allies_dead = (dead(allies) - i64::from(!s.alive)).max(0);
 }
 
 #[cfg(test)]

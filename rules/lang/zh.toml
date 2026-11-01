@@ -77,3 +77,8 @@ coach_header = "教练点评"
 coach_mistakes = "代价最大的失误"
 coach_well_done = "做得好的地方"
 coach_focus = "下一局的重点"
+
+[screen]
+push = "{count}个敌人阵亡，还有{secs}秒复活。去推塔。"
+roshan = "{count}个敌人阵亡，还有{secs}秒复活。去打肉山或者上高地。"
+allies_dead = "{count}个队友阵亡。打得保守一点，别一个人打。"

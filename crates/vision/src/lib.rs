@@ -35,6 +35,55 @@ pub fn capture_dota() -> anyhow::Result<RgbaImage> {
     anyhow::bail!("screen capture is only supported on Windows for now")
 }
 
+/// The monitor Dota 2 is on, kept between reads so live reading only
+/// captures the small parts of the screen it needs.
+#[cfg(windows)]
+pub struct DotaScreen {
+    monitor: xcap::Monitor,
+    width: u32,
+    height: u32,
+}
+
+#[cfg(windows)]
+impl DotaScreen {
+    pub fn find() -> anyhow::Result<Self> {
+        use anyhow::Context;
+
+        let window = xcap::Window::all()?
+            .into_iter()
+            .find(|w| w.title().is_ok_and(|t| t == "Dota 2") && !w.is_minimized().unwrap_or(false))
+            .context("no Dota 2 window")?;
+        let monitor = window.current_monitor()?;
+        let (width, height) = (monitor.width()?, monitor.height()?);
+        Ok(Self {
+            monitor,
+            width,
+            height,
+        })
+    }
+
+    /// The top bar, ready for [`topbar::read`].
+    pub fn top_bar(&self) -> anyhow::Result<image::RgbImage> {
+        let r = top_bar_area(self.width, self.height);
+        let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
+        Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
+    }
+}
+
+#[cfg(not(windows))]
+pub struct DotaScreen;
+
+#[cfg(not(windows))]
+impl DotaScreen {
+    pub fn find() -> anyhow::Result<Self> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+
+    pub fn top_bar(&self) -> anyhow::Result<image::RgbImage> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+}
+
 /// Saves a frame every few seconds of game time under
 /// `<dir>/<match id>/<clock>-*.jpg`, so frames line up with the GSI recording
 /// of the same match.

@@ -301,6 +301,12 @@ fn every_role_rule_fires_in_a_bad_game() {
                     buyback_cost: 3000,
                     last_hits: 1,
                     gpm: 200,
+                    // The top bar: some enemies dead, then most of your team.
+                    screen: true,
+                    enemies_dead: (t / 30).rem_euclid(4),
+                    enemies_dead_long: (t / 30).rem_euclid(4),
+                    dead_window: 30,
+                    allies_dead: if t % 200 < 50 { 3 } else { 0 },
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -392,4 +398,55 @@ async fn records_each_match_and_reviews_it() {
     );
     assert!(report.items.iter().any(|i| i.item == "item_dragon_lance"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A top-bar reading fills the screen fields from the player's side.
+#[test]
+fn reads_the_top_bar_from_the_players_side() {
+    use coach::GameSnapshot;
+    use dota2coach::apply_top_bar;
+    use vision::topbar::{Slot, TopBar};
+
+    let dead = |secs| Slot {
+        dead: true,
+        respawn: Some(secs),
+    };
+    let mut bar = TopBar::default();
+    bar.radiant[0] = dead(45);
+    bar.radiant[1] = dead(25);
+    bar.radiant[2] = dead(8);
+    bar.radiant[3] = Slot {
+        dead: true,
+        respawn: None,
+    };
+    bar.dire[4] = dead(30);
+
+    let mut s = GameSnapshot {
+        team: "dire".into(),
+        alive: false,
+        ..Default::default()
+    };
+    apply_top_bar(&mut s, &bar);
+    assert!(s.screen);
+    assert_eq!(
+        (s.enemies_dead, s.enemies_dead_long, s.dead_window),
+        (4, 2, 25)
+    );
+    assert_eq!(s.allies_dead, 0, "the dead Dire hero is you");
+
+    let mut s = GameSnapshot {
+        team: "radiant".into(),
+        alive: true,
+        ..Default::default()
+    };
+    apply_top_bar(&mut s, &bar);
+    assert_eq!(
+        (s.enemies_dead, s.enemies_dead_long, s.dead_window),
+        (1, 1, 30)
+    );
+    assert_eq!(s.allies_dead, 4);
+
+    let mut s = GameSnapshot::default();
+    apply_top_bar(&mut s, &bar);
+    assert!(!s.screen, "team not known yet");
 }

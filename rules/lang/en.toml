@@ -78,3 +78,8 @@ coach_header = "Coach's review"
 coach_mistakes = "Costliest mistakes"
 coach_well_done = "Done well"
 coach_focus = "Focus next game"
+
+[screen]
+push = "{count} enemies dead for {secs} seconds. Push a tower."
+roshan = "{count} enemies dead for {secs} seconds. Take Roshan or high ground."
+allies_dead = "{count} teammates dead. Play safe, don't fight alone."
