@@ -110,8 +110,22 @@ pub fn top_bar_area(width: u32, height: u32) -> Rect {
     }
 }
 
+/// Where the hero's portrait, abilities and item slots are: a band along the
+/// bottom, centred, sized by screen height.
+pub fn bottom_panel_area(width: u32, height: u32) -> Rect {
+    let band = height.min(width);
+    let tall = height * 18 / 100;
+    Rect {
+        x: (width - band) / 2,
+        y: height - tall,
+        width: band,
+        height: tall,
+    }
+}
+
 /// Saves what the readers need from one screenshot, next to `stem`:
-/// `<stem>-minimap.jpg` and `<stem>-topbar.jpg` at full detail, and
+/// `<stem>-minimap.jpg`, `<stem>-topbar.jpg` and `<stem>-items.jpg` (the
+/// bottom panel with abilities and items) at full detail, and
 /// `<stem>-screen.jpg`, the whole screen scaled down to 960 pixels wide for
 /// context.
 pub fn save_frame(image: &RgbaImage, stem: &Path) -> anyhow::Result<()> {
@@ -123,6 +137,7 @@ pub fn save_frame(image: &RgbaImage, stem: &Path) -> anyhow::Result<()> {
     let crop = |r: Rect| image::imageops::crop_imm(&rgb, r.x, r.y, r.width, r.height).to_image();
     write_jpeg(&crop(minimap_area(w, h)), &suffixed(stem, "minimap"), 92)?;
     write_jpeg(&crop(top_bar_area(w, h)), &suffixed(stem, "topbar"), 92)?;
+    write_jpeg(&crop(bottom_panel_area(w, h)), &suffixed(stem, "items"), 92)?;
     let small = if w > SCREEN_WIDTH {
         image::imageops::resize(
             &rgb,
@@ -190,6 +205,15 @@ mod tests {
                 height: 97
             }
         );
+        assert_eq!(
+            bottom_panel_area(1920, 1080),
+            Rect {
+                x: 420,
+                y: 886,
+                width: 1080,
+                height: 194
+            }
+        );
         // Ultrawide: same size as 1440p, centred.
         assert_eq!(top_bar_area(3440, 1440).x, (3440 - 1872) / 2);
     }
@@ -206,6 +230,7 @@ mod tests {
         };
         assert_eq!(size("minimap"), (356, 356));
         assert_eq!(size("topbar"), (1404, 97));
+        assert_eq!(size("items"), (1080, 194));
         assert_eq!(size("screen"), (960, 540));
         let _ = std::fs::remove_dir_all(&dir);
     }
