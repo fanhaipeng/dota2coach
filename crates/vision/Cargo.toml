@@ -12,3 +12,6 @@ tracing = "0.1.44"
 # Screen capture is Windows-only for now.
 [target.'cfg(windows)'.dependencies]
 xcap = "0.9.8"
+
+[dev-dependencies]
+serde_json = "1.0.154"

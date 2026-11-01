@@ -5,11 +5,14 @@
 //! input to the game or reads its memory.
 //!
 //! Step one is capture: grab the screen Dota is on and save frames during a
-//! match, so the readers can be built and tested against real games.
+//! match, so the readers can be built and tested against real games. The
+//! first reader is [`topbar`]: who is dead and their respawn timers.
 
 use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
+
+pub mod topbar;
 
 /// The screen Dota 2 is on, captured once.
 ///
