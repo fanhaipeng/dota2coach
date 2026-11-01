@@ -74,6 +74,8 @@ pub fn frame_path(dir: &Path, match_id: &str, clock: i64) -> PathBuf {
     dir.join(match_id).join(format!("{clock:05}"))
 }
 
+/// Crops of taller screens are scaled down to this height's detail.
+const DETAIL_HEIGHT: u32 = 1080;
 /// Width of the small copy of the whole screen.
 const SCREEN_WIDTH: u32 = 960;
 
@@ -125,7 +127,7 @@ pub fn bottom_panel_area(width: u32, height: u32) -> Rect {
 
 /// Saves what the readers need from one screenshot, next to `stem`:
 /// `<stem>-minimap.jpg`, `<stem>-topbar.jpg` and `<stem>-items.jpg` (the
-/// bottom panel with abilities and items) at full detail, and
+/// bottom panel with abilities and items) at up to 1080p detail, and
 /// `<stem>-screen.jpg`, the whole screen scaled down to 960 pixels wide for
 /// context.
 pub fn save_frame(image: &RgbaImage, stem: &Path) -> anyhow::Result<()> {
@@ -134,10 +136,23 @@ pub fn save_frame(image: &RgbaImage, stem: &Path) -> anyhow::Result<()> {
     }
     let (w, h) = image.dimensions();
     let rgb = image::DynamicImage::ImageRgba8(image.clone()).into_rgb8();
-    let crop = |r: Rect| image::imageops::crop_imm(&rgb, r.x, r.y, r.width, r.height).to_image();
-    write_jpeg(&crop(minimap_area(w, h)), &suffixed(stem, "minimap"), 92)?;
-    write_jpeg(&crop(top_bar_area(w, h)), &suffixed(stem, "topbar"), 92)?;
-    write_jpeg(&crop(bottom_panel_area(w, h)), &suffixed(stem, "items"), 92)?;
+    // Above 1080p, scale the crops down to 1080p detail: enough to read, and
+    // a 4K crop would be four times the size.
+    let crop = |r: Rect| {
+        let part = image::imageops::crop_imm(&rgb, r.x, r.y, r.width, r.height).to_image();
+        if h <= DETAIL_HEIGHT {
+            return part;
+        }
+        image::imageops::resize(
+            &part,
+            r.width * DETAIL_HEIGHT / h,
+            r.height * DETAIL_HEIGHT / h,
+            image::imageops::FilterType::CatmullRom,
+        )
+    };
+    write_jpeg(&crop(minimap_area(w, h)), &suffixed(stem, "minimap"), 90)?;
+    write_jpeg(&crop(top_bar_area(w, h)), &suffixed(stem, "topbar"), 90)?;
+    write_jpeg(&crop(bottom_panel_area(w, h)), &suffixed(stem, "items"), 90)?;
     let small = if w > SCREEN_WIDTH {
         image::imageops::resize(
             &rgb,
@@ -232,6 +247,13 @@ mod tests {
         assert_eq!(size("topbar"), (1404, 97));
         assert_eq!(size("items"), (1080, 194));
         assert_eq!(size("screen"), (960, 540));
+
+        // 4K crops come out the size of 1080p ones.
+        let screen = RgbaImage::from_pixel(3840, 2160, image::Rgba([30, 200, 30, 255]));
+        save_frame(&screen, &stem).unwrap();
+        assert_eq!(size("minimap"), (356, 356));
+        assert_eq!(size("topbar"), (1404, 97));
+        assert_eq!(size("items"), (1080, 194));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
