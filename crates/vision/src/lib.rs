@@ -89,9 +89,10 @@ pub struct Rect {
 }
 
 /// Where the minimap is with the default HUD: a square in the bottom-left
-/// corner, sized by screen height. Generous, so HUD scale changes still fit.
+/// corner, sized by screen height. Measured at 4K as 495 pixels, plus a little
+/// margin.
 pub fn minimap_area(width: u32, height: u32) -> Rect {
-    let side = (height * 33 / 100).min(width);
+    let side = (height * 24 / 100).min(width);
     Rect {
         x: 0,
         y: height - side,
@@ -100,15 +101,16 @@ pub fn minimap_area(width: u32, height: u32) -> Rect {
     }
 }
 
-/// Where the hero portraits are: a band along the top, centred, sized by
-/// screen height so it also fits ultrawide screens.
+/// Where the hero portraits, clock and respawn timers are: a band along the
+/// top, centred, sized by screen height so it also fits ultrawide screens.
+/// Measured at 4K as 1710 by 135 pixels.
 pub fn top_bar_area(width: u32, height: u32) -> Rect {
-    let band = (height * 13 / 10).min(width);
+    let band = (height * 82 / 100).min(width);
     Rect {
         x: (width - band) / 2,
         y: 0,
         width: band,
-        height: height * 9 / 100,
+        height: height * 65 / 1000,
     }
 }
 
@@ -206,18 +208,18 @@ mod tests {
             minimap_area(1920, 1080),
             Rect {
                 x: 0,
-                y: 724,
-                width: 356,
-                height: 356
+                y: 821,
+                width: 259,
+                height: 259
             }
         );
         assert_eq!(
             top_bar_area(1920, 1080),
             Rect {
-                x: 258,
+                x: 517,
                 y: 0,
-                width: 1404,
-                height: 97
+                width: 885,
+                height: 70
             }
         );
         assert_eq!(
@@ -230,7 +232,7 @@ mod tests {
             }
         );
         // Ultrawide: same size as 1440p, centred.
-        assert_eq!(top_bar_area(3440, 1440).x, (3440 - 1872) / 2);
+        assert_eq!(top_bar_area(3440, 1440).x, (3440 - 1180) / 2);
     }
 
     #[test]
@@ -243,16 +245,16 @@ mod tests {
             let img = image::open(dir.join("7").join(format!("00030-{part}.jpg"))).unwrap();
             (img.width(), img.height())
         };
-        assert_eq!(size("minimap"), (356, 356));
-        assert_eq!(size("topbar"), (1404, 97));
+        assert_eq!(size("minimap"), (259, 259));
+        assert_eq!(size("topbar"), (885, 70));
         assert_eq!(size("items"), (1080, 194));
         assert_eq!(size("screen"), (960, 540));
 
         // 4K crops come out the size of 1080p ones.
         let screen = RgbaImage::from_pixel(3840, 2160, image::Rgba([30, 200, 30, 255]));
         save_frame(&screen, &stem).unwrap();
-        assert_eq!(size("minimap"), (356, 356));
-        assert_eq!(size("topbar"), (1404, 97));
+        assert_eq!(size("minimap"), (259, 259));
+        assert_eq!(size("topbar"), (885, 70));
         assert_eq!(size("items"), (1080, 194));
         let _ = std::fs::remove_dir_all(&dir);
     }
