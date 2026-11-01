@@ -112,7 +112,7 @@ it only listens on your own computer (`127.0.0.1`).
 
 | Command | What it does |
 |---|---|
-| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. |
+| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. `--frames` (Windows) also saves a screenshot every 10 seconds of game time to `games/frames/` for the screen-reading work; they stay on your computer. |
 | `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong, `--coach` for an optional write-up by Claude (uses your own API credit; needs `ANTHROPIC_API_KEY`; `--model` picks the Claude model). |
 | `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
 | `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
@@ -211,12 +211,13 @@ patch.
 | `crates/gsi` | GSI payload model, the local HTTP receiver, record and replay |
 | `crates/coach` | `GameSnapshot`, the `Advisor` trait, the Rhai rule engine, and the `Coordinator` that handles cooldowns and pacing |
 | `crates/voice` | Spoken output per OS |
+| `crates/vision` | Screen capture and, later, reading the minimap and top bar (Windows) |
 | `crates/app` | The `dota2coach` binary and the pipeline tying them together |
 
 ## Roadmap
 
 1. GSI, predefined rules and voice on Windows, macOS and Linux (done).
 2. Post-game review: the facts (`review`, done), a coach's write-up by Claude (`review --coach`, done), then trends across games.
-3. Minimap vision sidecar (prototype in Python, port to Rust; Windows first).
+3. Screen reading, Windows first: capture (`run --frames`, done), dead enemies on the top bar, then enemies on the minimap. It only reads what is on your screen; it never sends input or reads game memory.
 4. Live LLM advice triggered by game events.
 5. A small trained model, compared against the rules.
