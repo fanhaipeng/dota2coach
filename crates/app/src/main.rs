@@ -71,9 +71,10 @@ enum Cmd {
         /// Don't record anything.
         #[arg(long, conflicts_with = "record")]
         no_record: bool,
-        /// Also save a screenshot of Dota every SECS seconds of game time (10
-        /// if no value is given) to `<games>/frames/<match id>/`, for building
-        /// screen reading. Windows only.
+        /// Also save the minimap, the top bar and a small copy of the screen
+        /// every SECS seconds of game time (10 if no value is given) to
+        /// `<games>/frames/<match id>/`, for building screen reading. Windows
+        /// only.
         #[arg(long, value_name = "SECS", num_args = 0..=1, default_missing_value = "10")]
         frames: Option<i64>,
     },
