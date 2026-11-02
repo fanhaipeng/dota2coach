@@ -5,6 +5,8 @@
 //! produce or extend the same struct, so rules, the LLM advisor and a trained
 //! model all read one schema.
 
+use std::collections::BTreeMap;
+
 use gsi::GameState;
 use serde::{Deserialize, Serialize};
 
@@ -113,7 +115,18 @@ pub struct GameSnapshot {
     pub ally_items_age: i64,
     pub enemy_items: Vec<String>,
     pub enemy_items_age: i64,
+    /// The items last read on each hero whose name was recognised in the
+    /// panel, by internal hero name, and the game seconds since.
+    pub hero_items: BTreeMap<String, Vec<String>>,
+    pub hero_items_age: BTreeMap<String, i64>,
+    /// The enemy hero whose items were read longest ago, if that's at least
+    /// [`STALE_ITEMS`] seconds (or never, after that much game time). Empty
+    /// until the lineup is known.
+    pub stale_enemy: String,
 }
+
+/// Enemy items older than this, in game seconds, are worth reading again.
+pub const STALE_ITEMS: i64 = 300;
 
 /// World units within which a hero counts as near you: about a screen.
 pub const NEAR: i64 = 1500;

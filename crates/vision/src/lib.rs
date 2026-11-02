@@ -17,6 +17,7 @@ mod gallery;
 pub mod heroes;
 pub mod items;
 pub mod minimap;
+pub mod ocr;
 pub mod topbar;
 
 /// The screen Dota 2 is on, captured once.

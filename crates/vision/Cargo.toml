@@ -9,9 +9,10 @@ anyhow = "1.0.104"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 tracing = "0.1.44"
 
-# Screen capture is Windows-only for now.
+# Screen capture and text recognition are Windows-only for now.
 [target.'cfg(windows)'.dependencies]
 xcap = "0.9.8"
+windows = { version = "0.62.2", features = ["Media_Ocr", "Graphics_Imaging", "Globalization", "Storage_Streams", "Foundation", "Foundation_Collections"] }
 
 [dev-dependencies]
 serde_json = "1.0.154"

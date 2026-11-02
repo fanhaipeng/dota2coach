@@ -177,6 +177,42 @@ pub fn side(panel: &RgbImage) -> Option<Side> {
     }
 }
 
+/// Where the selected hero's name is written, above its face (at 1080p
+/// detail), and how much it is enlarged for text recognition.
+const NAME_X: u32 = 120;
+const NAME_Y: u32 = 26;
+const NAME_W: u32 = 160;
+const NAME_H: u32 = 24;
+const NAME_ZOOM: u32 = 4;
+
+/// The selected hero's name from a panel crop, enlarged for
+/// [`crate::ocr::read_text`]: as it looks, and with only its letters kept,
+/// black on white (your own name is gold, others' white). The world shows
+/// through behind the name, so any of them can read best.
+pub fn name_pictures(panel: &RgbImage) -> [RgbImage; 3] {
+    let panel = at_detail(panel);
+    let strip = image::imageops::crop_imm(&*panel, NAME_X, NAME_Y, NAME_W, NAME_H).to_image();
+    let big = image::imageops::resize(
+        &strip,
+        NAME_W * NAME_ZOOM,
+        NAME_H * NAME_ZOOM,
+        image::imageops::FilterType::CatmullRom,
+    );
+    let keep = |letter: fn(i32, i32, i32) -> bool| {
+        RgbImage::from_fn(big.width(), big.height(), |x, y| {
+            let [r, g, b] = big.get_pixel(x, y).0.map(i32::from);
+            image::Rgb(if letter(r, g, b) {
+                [0, 0, 0]
+            } else {
+                [255, 255, 255]
+            })
+        })
+    };
+    let gold = keep(|r, g, b| r > 170 && g > 130 && b < 140 && r - b > 60);
+    let white = keep(|r, g, b| r.min(g).min(b) > 175 && r.max(g).max(b) - r.min(g).min(b) < 40);
+    [big, gold, white]
+}
+
 /// The spread of brightness across a picture.
 fn busyness(image: &RgbImage) -> f32 {
     let values: Vec<f32> = image

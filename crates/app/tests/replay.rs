@@ -595,6 +595,10 @@ fn remembers_items_of_selected_heroes() {
             match_id: "1".into(),
             clock_time: clock,
             items: vec!["item_blink".into(), "item_tpscroll".into()],
+            enemy_heroes: vec![
+                "npc_dota_hero_phantom_assassin".into(),
+                "npc_dota_hero_lion".into(),
+            ],
             ..Default::default()
         };
         panel.observe(&mut s, read.as_ref());
@@ -608,6 +612,7 @@ fn remembers_items_of_selected_heroes() {
         110,
         Some(PanelRead {
             side: Some(Side::Enemy),
+            hero: None,
             items: items(&["item_blink"]),
         }),
     );
@@ -617,6 +622,7 @@ fn remembers_items_of_selected_heroes() {
         120,
         Some(PanelRead {
             side: Some(Side::Enemy),
+            hero: Some("npc_dota_hero_phantom_assassin".into()),
             items: items(&["item_desolator", "item_power_treads"]),
         }),
     );
@@ -627,9 +633,45 @@ fn remembers_items_of_selected_heroes() {
         200,
         Some(PanelRead {
             side: Some(Side::Ally),
+            hero: None,
             items: items(&["item_ward_dispenser"]),
         }),
     );
     assert_eq!(s.ally_items, ["item_ward_dispenser"]);
     assert_eq!(s.enemy_items_age, 80);
+    assert_eq!(
+        s.hero_items["npc_dota_hero_phantom_assassin"],
+        ["item_desolator", "item_power_treads"]
+    );
+    assert_eq!(s.hero_items_age["npc_dota_hero_phantom_assassin"], 80);
+    assert_eq!(s.stale_enemy, "", "nothing 5 minutes old yet");
+    let s = at(400, None);
+    assert_eq!(s.stale_enemy, "npc_dota_hero_lion", "never read");
+    let s = at(450, None);
+    assert_eq!(
+        s.stale_enemy, "npc_dota_hero_lion",
+        "older than PA's read at 120"
+    );
+}
+
+#[test]
+fn recognises_hero_names_in_any_language() {
+    use dota2coach::HeroNames;
+    let names = HeroNames::load(&repo().join("rules")).unwrap();
+    let lineup: Vec<String> = ["ursa", "lycan", "zuus", "vengefulspirit", "slardar"]
+        .iter()
+        .map(|h| format!("npc_dota_hero_{h}"))
+        .collect();
+    let read = |texts: &[&str]| {
+        let texts: Vec<String> = texts.iter().map(|t| t.to_string()).collect();
+        names.identify(&texts, &lineup).map(str::to_owned)
+    };
+    // As Windows text recognition read them, misreads included.
+    assert_eq!(read(&["能 战 士"]).as_deref(), Some("npc_dota_hero_ursa"));
+    assert_eq!(
+        read(&["复 仇 之 7"]).as_deref(),
+        Some("npc_dota_hero_vengefulspirit")
+    );
+    assert_eq!(read(&["ZEUS"]).as_deref(), Some("npc_dota_hero_zuus"));
+    assert_eq!(read(&[""]), None);
 }

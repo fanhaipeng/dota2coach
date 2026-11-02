@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use coach::i18n::Arg;
 use coach::{
-    Advisor, Coordinator, GameSnapshot, History, Packs, Report, RoleDetector, RuleEngine, Said,
+    Advisor, Catalog, Coordinator, GameSnapshot, History, Packs, Report, RoleDetector, RuleEngine,
+    Said,
 };
 use gsi::Update;
 use gsi::record::{self, Recorder};
@@ -402,26 +403,33 @@ pub fn apply_lineup(s: &mut GameSnapshot, lineup: &vision::heroes::Lineup) {
     s.enemy_heroes = enemies.to_vec();
 }
 
-/// One reading of the item panel: whose side the hero is on, and its six
-/// inventory items.
+/// One reading of the item panel: whose side the hero is on, who it is if
+/// its name was recognised, and its six inventory items.
 #[derive(Debug, Clone, Default)]
 pub struct PanelRead {
     pub side: Option<vision::items::Side>,
+    /// Internal hero name, for example `npc_dota_hero_axe`.
+    pub hero: Option<String>,
     pub items: [Option<String>; 6],
 }
 
 /// Remembers the items read off the panel while you have another hero
-/// selected, per side, for one match.
+/// selected, per side and per hero, for one match.
 #[derive(Debug, Default)]
 pub struct PanelItems {
     match_id: String,
     /// Items seen and the clock of the last read: allies, then enemies.
     seen: [(Vec<String>, Option<i64>); 2],
+    /// Each named hero's items at its last read, and when.
+    heroes: BTreeMap<String, (Vec<String>, i64)>,
 }
 
 impl PanelItems {
     /// Records a panel reading and fills the snapshot's panel item fields.
+    /// Call after [`apply_lineup`].
     pub fn observe(&mut self, s: &mut GameSnapshot, read: Option<&PanelRead>) {
+        use coach::snapshot::STALE_ITEMS;
+
         if self.match_id != s.match_id {
             *self = Self {
                 match_id: s.match_id.clone(),
@@ -432,17 +440,26 @@ impl PanelItems {
             && let Some(side) = read.side
         {
             let items: Vec<&String> = read.items.iter().flatten().collect();
-            // The panel shows you unless its items differ from yours; your
-            // own bar can look red while you're dead.
+            // The panel shows you if it has your name, or, unnamed, unless
+            // its items differ from yours (your own bar can look red while
+            // you're dead).
             let yours = items.iter().filter(|i| s.items.contains(i)).count();
-            if !items.is_empty() && yours * 2 < items.len() {
+            let is_you = match &read.hero {
+                Some(hero) => hero.strip_prefix("npc_dota_hero_") == Some(s.hero.as_str()),
+                None => items.is_empty() || yours * 2 >= items.len(),
+            };
+            if !is_you {
                 let (seen, at) = &mut self.seen[usize::from(side == vision::items::Side::Enemy)];
-                for item in items {
+                for &item in &items {
                     if !seen.contains(item) {
                         seen.push(item.clone());
                     }
                 }
                 *at = Some(s.clock_time);
+                if let Some(hero) = &read.hero {
+                    let items = items.into_iter().cloned().collect();
+                    self.heroes.insert(hero.clone(), (items, s.clock_time));
+                }
             }
         }
         let age = |at: Option<i64>| at.map_or(-1, |at| (s.clock_time - at).max(0));
@@ -450,7 +467,162 @@ impl PanelItems {
         s.ally_items_age = age(self.seen[0].1);
         s.enemy_items = self.seen[1].0.clone();
         s.enemy_items_age = age(self.seen[1].1);
+        s.hero_items = self
+            .heroes
+            .iter()
+            .map(|(hero, (items, _))| (hero.clone(), items.clone()))
+            .collect();
+        s.hero_items_age = self
+            .heroes
+            .iter()
+            .map(|(hero, (_, at))| (hero.clone(), age(Some(*at))))
+            .collect();
+        // Never read counts from the start of the game.
+        let stalest = s
+            .enemy_heroes
+            .iter()
+            .map(|hero| {
+                let at = self.heroes.get(hero).map_or(0, |h| h.1);
+                (s.clock_time - at, hero)
+            })
+            .max_by_key(|(age, _)| *age);
+        s.stale_enemy = match stalest {
+            Some((age, hero)) if age >= STALE_ITEMS => hero.clone(),
+            _ => String::new(),
+        };
     }
+}
+/// Hero names in every language of the rules folder (its `[hero]` tables),
+/// for recognising the name written above the selected hero's face whatever
+/// language Dota is set to.
+pub struct HeroNames {
+    catalogs: Vec<Catalog>,
+}
+
+/// A name must match at least this well (0 to 1), and better than the next
+/// hero by this much, to count.
+const MIN_NAME_MATCH: f64 = 0.5;
+const MIN_NAME_LEAD: f64 = 0.15;
+
+impl HeroNames {
+    pub fn load(rules_dir: &Path) -> anyhow::Result<Self> {
+        let catalogs = coach::i18n::available(rules_dir)
+            .iter()
+            .map(|lang| Catalog::load(lang, &[rules_dir.to_owned()]))
+            .collect::<anyhow::Result<_>>()?;
+        Ok(Self { catalogs })
+    }
+
+    /// A hero's name in each language, from its internal name.
+    fn names(&self, hero: &str) -> Vec<String> {
+        let short = hero.strip_prefix("npc_dota_hero_").unwrap_or(hero);
+        self.catalogs
+            .iter()
+            .filter_map(|c| c.render(&format!("hero.{short}"), &BTreeMap::new()))
+            .collect()
+    }
+
+    /// Which of `candidates` (internal names) the recognised `texts` name,
+    /// if one stands out.
+    pub fn identify<'a>(&self, texts: &[String], candidates: &'a [String]) -> Option<&'a str> {
+        let mut scores: Vec<(f64, &str)> = candidates
+            .iter()
+            .map(|hero| {
+                let best = self
+                    .names(hero)
+                    .iter()
+                    .flat_map(|name| texts.iter().map(move |text| likeness(text, name)))
+                    .fold(0.0, f64::max);
+                (best, hero.as_str())
+            })
+            .collect();
+        scores.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let (best, hero) = *scores.first()?;
+        let second = scores.get(1).map_or(0.0, |s| s.0);
+        (best >= MIN_NAME_MATCH && best - second >= MIN_NAME_LEAD).then_some(hero)
+    }
+}
+
+/// Recognises the selected hero's name in panel crops, reading the text
+/// again only when the letters change (the world behind them moves all the
+/// time, the letters don't).
+pub struct PanelNamer {
+    names: HeroNames,
+    languages: Vec<String>,
+    /// The letters last read, and the hero they named.
+    last: Option<([image::RgbImage; 2], Option<String>)>,
+}
+
+/// Letter pictures differing in less than this share of pixels are the same
+/// name.
+const SAME_LETTERS: f64 = 0.02;
+
+impl PanelNamer {
+    pub fn new(names: HeroNames) -> Self {
+        Self {
+            names,
+            languages: vision::ocr::languages(),
+            last: None,
+        }
+    }
+
+    /// The selected hero, out of `candidates` (the lineup).
+    pub fn name(&mut self, panel: &image::RgbImage, candidates: &[String]) -> Option<String> {
+        let [plain, gold, white] = vision::items::name_pictures(panel);
+        if let Some((letters, hero)) = &self.last
+            && differing(&letters[0], &gold) < SAME_LETTERS
+            && differing(&letters[1], &white) < SAME_LETTERS
+        {
+            return hero.clone();
+        }
+        let mut texts = Vec::new();
+        for lang in &self.languages {
+            for picture in [&plain, &gold, &white] {
+                if let Ok(text) = vision::ocr::read_text(picture, lang)
+                    && !text.trim().is_empty()
+                {
+                    texts.push(text);
+                }
+            }
+        }
+        let hero = self.names.identify(&texts, candidates).map(str::to_owned);
+        self.last = Some(([gold, white], hero.clone()));
+        hero
+    }
+}
+
+/// The share of pixels that differ between two same-sized pictures.
+fn differing(a: &image::RgbImage, b: &image::RgbImage) -> f64 {
+    if a.dimensions() != b.dimensions() {
+        return 1.0;
+    }
+    let differ = a.pixels().zip(b.pixels()).filter(|(p, q)| p != q).count();
+    differ as f64 / (a.width() * a.height()).max(1) as f64
+}
+
+/// How alike two names are, from 0 to 1: the share of letters they have in
+/// common, ignoring case, spaces and punctuation. Forgiving of the odd
+/// misread letter, and works for any script.
+fn likeness(a: &str, b: &str) -> f64 {
+    let letters = |s: &str| -> Vec<char> {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    let (a, mut b) = (letters(a), letters(b));
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let total = (a.len() + b.len()) as f64;
+    let mut common = 0;
+    for c in a {
+        if let Some(i) = b.iter().position(|&d| d == c) {
+            b.swap_remove(i);
+            common += 1;
+        }
+    }
+    2.0 * common as f64 / total
 }
 
 /// An ally icon this close to where GSI puts you is you.

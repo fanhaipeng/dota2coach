@@ -3023,6 +3023,7 @@ dependencies = [
  "image",
  "serde_json",
  "tracing",
+ "windows",
  "xcap",
 ]
 

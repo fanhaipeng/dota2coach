@@ -6,10 +6,10 @@ use clap::{Parser, Subcommand};
 use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
-    CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, MissingEnemies, PanelItems, PanelRead,
-    Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes, fetch_items,
-    latest_recording, resolve_heroes_dir, resolve_items_dir, resolve_rules_dir, review_file,
-    run_coach, steam,
+    CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, HeroNames, MissingEnemies, PanelItems,
+    PanelNamer, PanelRead, Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes,
+    fetch_items, latest_recording, resolve_heroes_dir, resolve_items_dir, resolve_rules_dir,
+    review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -259,7 +259,11 @@ async fn main() -> anyhow::Result<()> {
                         None
                     }
                 };
-                read_screen(clock_rx, screen_tx, heroes, icons);
+                let namer = match &icons {
+                    Some(_) => Some(PanelNamer::new(HeroNames::load(&coach.config().rules_dir)?)),
+                    None => None,
+                };
+                read_screen(clock_rx, screen_tx, heroes, icons.zip(namer));
             }
             let mut missing = MissingEnemies::default();
             let mut panel_items = PanelItems::default();
@@ -394,7 +398,7 @@ fn read_screen(
     clock: watch::Receiver<GameClock>,
     out: watch::Sender<Option<ScreenRead>>,
     heroes: Option<vision::heroes::References>,
-    icons: Option<vision::items::Icons>,
+    mut panel_reader: Option<(vision::items::Icons, PanelNamer)>,
 ) {
     std::thread::spawn(move || {
         let mut screen: Option<DotaScreen> = None;
@@ -415,7 +419,7 @@ fn read_screen(
                 lineup = (new_lineup(), None);
             }
             let capture = |s: &DotaScreen| {
-                let panel = match icons {
+                let panel = match panel_reader {
                     Some(_) => Some(s.panel()?),
                     None => None,
                 };
@@ -447,10 +451,20 @@ fn read_screen(
                         bar,
                         map: minimap.1.read(&map),
                         lineup: lineup.1.clone(),
-                        panel: panel.zip(icons.as_ref()).map(|(image, icons)| PanelRead {
-                            side: vision::items::side(&image),
-                            items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
-                        }),
+                        panel: panel
+                            .zip(panel_reader.as_mut())
+                            .map(|(image, (icons, namer))| {
+                                let candidates: Vec<String> = lineup
+                                    .1
+                                    .iter()
+                                    .flat_map(|l| l.radiant.iter().chain(&l.dire).cloned())
+                                    .collect();
+                                PanelRead {
+                                    side: vision::items::side(&image),
+                                    hero: namer.name(&image, &candidates),
+                                    items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
+                                }
+                            }),
                     }));
                 }
                 Err(err) => {
