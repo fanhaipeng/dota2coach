@@ -50,7 +50,8 @@ async fn coaches_the_sample_game() {
 
     assert!(said("Water runes in 15 seconds."), "{spoken:#?}");
     assert!(said("You have no TP scroll."), "{spoken:#?}");
-    assert!(said("Power and Bounty runes in 15 seconds."), "{spoken:#?}");
+    // A carry near the river hears about power runes, not bounty runes.
+    assert!(said("Power runes in 15 seconds."), "{spoken:#?}");
     assert!(said("Low health. Back off."), "{spoken:#?}");
     assert!(
         said("Laning is ending. Plan your farming route."),
@@ -79,7 +80,7 @@ async fn coaches_the_sample_game_in_chinese() {
     let said = |text: &str| spoken.iter().any(|s| s == text);
 
     assert!(said("水符15秒后刷新。"), "{spoken:#?}");
-    assert!(said("能量符和赏金符15秒后刷新。"), "{spoken:#?}");
+    assert!(said("能量符15秒后刷新。"), "{spoken:#?}");
     assert!(said("你身上没有回城卷轴。"), "{spoken:#?}");
     assert!(said("血量低，快撤退。"), "{spoken:#?}");
     assert!(said("对线期快结束了，规划好你的打钱路线。"), "{spoken:#?}");
@@ -239,7 +240,8 @@ async fn detects_the_role_and_loads_its_pack() {
     assert!(
         spoken
             .iter()
-            .any(|s| s == "You look like the offlaner, position 3. Coaching for that role."),
+            .any(|s| s
+                == "You seem to be playing offlaner, position 3, so I'll coach for that for now."),
         "{spoken:#?}"
     );
     // The detected pos3 pack is loaded, so its end-of-laning rule fires.
@@ -252,7 +254,7 @@ async fn detects_the_role_and_loads_its_pack() {
     assert_eq!(
         spoken
             .iter()
-            .filter(|s| s.starts_with("You look like"))
+            .filter(|s| s.starts_with("You seem to be playing"))
             .count(),
         1
     );
@@ -261,7 +263,7 @@ async fn detects_the_role_and_loads_its_pack() {
     assert!(
         spoken
             .iter()
-            .any(|s| s == "看起来你在打二号位中单，接下来按这个位置给建议。"),
+            .any(|s| s == "你好像在打二号位中单，先按这个位置给建议。"),
         "{spoken:#?}"
     );
 }
@@ -718,5 +720,44 @@ fn uses_the_items_read_on_enemies() {
     assert_eq!(
         said(&mut engine, &s, "universal/check_items"),
         ["Click their Axe on the top bar to check the items."]
+    );
+}
+
+/// Rune reminders only for runes you can use: river runes when you're near
+/// them, bounty runes and shrines for supports.
+#[test]
+fn reminds_of_runes_you_can_take() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let said = |role: &str, pos: (i64, i64), clock: i64| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let s = GameSnapshot {
+            in_game: true,
+            clock_time: clock,
+            role: role.into(),
+            alive: true,
+            xpos: pos.0,
+            ypos: pos.1,
+            items: vec!["item_tpscroll".into()],
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/runes")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    let mid = (-600, -400);
+    let far_jungle = (-6000, -6000);
+    assert_eq!(said("pos2", mid, 465), ["Power runes in 15 seconds."]);
+    assert!(said("pos1", far_jungle, 465).is_empty());
+    assert_eq!(
+        said("pos5", far_jungle, 465),
+        ["Bounty runes in 15 seconds."]
+    );
+    assert_eq!(
+        said("pos4", far_jungle, 405),
+        ["Wisdom shrines in 15 seconds."]
     );
 }

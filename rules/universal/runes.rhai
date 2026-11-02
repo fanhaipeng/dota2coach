@@ -6,6 +6,26 @@
 //   - Bounty runes: every 4 minutes (0:00, then 4:00, 8:00, ...)
 //   - Wisdom shrines: every 7 minutes from 7:00 (they replaced wisdom runes)
 // Adjust the numbers here when a patch changes them; no recompiling needed.
+//
+// Only what you can use is said: water and power runes when you're near the
+// river spots they spawn at, bounty runes and wisdom shrines to supports (who
+// take them) and while your role isn't known yet.
+
+// Where water and power runes spawn: the top and bottom river spots, in world
+// units (approximate). Within 3500 units counts as near.
+fn near(s, x, y) {
+    let dx = s.xpos - x;
+    let dy = s.ypos - y;
+    dx * dx + dy * dy < 3500 * 3500
+}
+
+fn near_river_rune(s) {
+    near(s, -1760, 1216) || near(s, 1168, -1200)
+}
+
+fn takes_side_runes(s) {
+    s.role == "" || s.role == "pos4" || s.role == "pos5"
+}
 
 fn soon(t, every, first) {
     // True for 5 seconds starting 15 seconds before a spawn.
@@ -19,15 +39,16 @@ fn check(s) {
 
     // Message keys; the language's catalog names them and joins the list.
     let runes = [];
-    if (t >= 105 && t < 110) || (t >= 225 && t < 230) { runes.push("rune.water"); }
-    if soon(t, 120, 360) { runes.push("rune.power"); }
-    if soon(t, 240, 240) { runes.push("rune.bounty"); }
+    let river = near_river_rune(s);
+    if river && (t >= 105 && t < 110) || (t >= 225 && t < 230) { runes.push("rune.water"); }
+    if river && soon(t, 120, 360) { runes.push("rune.power"); }
+    if takes_side_runes(s) && soon(t, 240, 240) { runes.push("rune.bounty"); }
 
     let out = [];
     if !runes.is_empty() {
         out.push(#{ msg: "runes.soon", args: #{ runes: runes }, priority: 1, cooldown: 30 });
     }
-    if soon(t, 420, 420) {
+    if takes_side_runes(s) && soon(t, 420, 420) {
         out.push(#{ msg: "wisdom.soon", priority: 1, cooldown: 30 });
     }
     out

@@ -25,7 +25,7 @@ bounty = "赏金符"
 wisdom = "智慧符"
 
 [role]
-detected = "看起来你在打{role}，接下来按这个位置给建议。"
+detected = "你好像在打{role}，先按这个位置给建议。"
 pos1 = "一号位大哥"
 pos2 = "二号位中单"
 pos3 = "三号位劣单"
