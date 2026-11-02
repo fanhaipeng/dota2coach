@@ -564,13 +564,19 @@ impl HeroNames {
         Ok(Self { catalogs })
     }
 
-    /// A hero's name in each language, from its internal name.
+    /// A hero's name in each language, and its nicknames (`[hero_alias]`,
+    /// several separated by |), from its internal name.
     fn names(&self, hero: &str) -> Vec<String> {
         let short = hero.strip_prefix("npc_dota_hero_").unwrap_or(hero);
-        self.catalogs
-            .iter()
-            .filter_map(|c| c.render(&format!("hero.{short}"), &BTreeMap::new()))
-            .collect()
+        let mut names = Vec::new();
+        for catalog in &self.catalogs {
+            for table in ["hero", "hero_alias"] {
+                if let Some(text) = catalog.render(&format!("{table}.{short}"), &BTreeMap::new()) {
+                    names.extend(text.split('|').map(str::to_owned));
+                }
+            }
+        }
+        names
     }
 
     /// Which of `candidates` (internal names) the recognised `texts` name,

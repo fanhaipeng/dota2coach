@@ -94,7 +94,8 @@ async fn coaches_the_sample_game_in_chinese() {
 }
 
 /// Every message key a rule can use must exist in English (the fallback), and
-/// every shipped language should translate all of them.
+/// every shipped language should translate all of them. Hero nicknames
+/// (`[hero_alias]`) are each language's own.
 #[test]
 fn every_language_translates_every_message() {
     let root = repo().join("rules");
@@ -106,6 +107,8 @@ fn every_language_translates_every_message() {
             let table: toml::Table = text.parse().unwrap();
             let mut out = Vec::new();
             flatten("", &table, &mut out);
+            // Nicknames for recognising hero names differ by language.
+            out.retain(|k| !k.starts_with("hero_alias."));
             out.sort();
             out
         };
@@ -678,6 +681,14 @@ fn recognises_hero_names_in_any_language() {
     );
     assert_eq!(read(&["ZEUS"]).as_deref(), Some("npc_dota_hero_zuus"));
     assert_eq!(read(&[""]), None);
+    // Nicknames count too.
+    let dire: Vec<String> = ["sven", "juggernaut", "tidehunter", "terrorblade"]
+        .iter()
+        .map(|h| format!("npc_dota_hero_{h}"))
+        .collect();
+    let read = |text: &str| names.identify(&[text.to_owned()], &dire).map(str::to_owned);
+    assert_eq!(read("剑 圣").as_deref(), Some("npc_dota_hero_juggernaut"));
+    assert_eq!(read("潮 汐").as_deref(), Some("npc_dota_hero_tidehunter"));
 }
 
 /// Items seen on an enemy count like the hero itself, and the coach asks for

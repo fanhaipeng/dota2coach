@@ -39,6 +39,10 @@ const FACE: ThumbSize = ThumbSize {
 /// lineup counts as read.
 const MIN_VOTES: u32 = 20;
 const MIN_SHARE: f32 = 0.6;
+/// A slot whose best match is at least this close to its runner-up (as a
+/// share of the runner-up's distance) is left unknown. Default portraits
+/// have measured 0.83 and under; alternative looks 0.9 and over.
+const MAX_CLOSENESS: f32 = 0.85;
 
 /// Internal hero names, for example `npc_dota_hero_phantom_assassin`, empty
 /// for a hero that couldn't be told.
@@ -118,17 +122,23 @@ impl References {
         let name = self.faces.name(best);
         candidates.iter().find(|c| *c == name).map(String::as_str)
     }
-    /// The closest hero to each slot's portrait and how far off it is, for
-    /// tuning.
+    /// The closest hero to each slot's portrait, how far off it is, and how
+    /// far off the runner-up is, for tuning.
     #[doc(hidden)]
-    pub fn scores(&self, image: &RgbImage) -> [(String, f32); 10] {
+    pub fn scores(&self, image: &RgbImage) -> [(String, f32, f32); 10] {
         let image = topbar::at_detail(image);
         std::array::from_fn(|i| {
-            let (best, d) = self
+            let p = portrait(&image, i);
+            let (best, d) = self.portraits.best(&p).unwrap_or((0, f32::MAX));
+            let second = self
                 .portraits
-                .best(&portrait(&image, i))
-                .unwrap_or((0, f32::MAX));
-            (self.portraits.name(best).to_owned(), d)
+                .names()
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| j != best)
+                .filter_map(|(_, n)| self.portraits.distance_to(&p, n))
+                .fold(f32::MAX, f32::min);
+            (self.portraits.name(best).to_owned(), d, second)
         })
     }
 
@@ -166,16 +176,20 @@ pub struct LineupReader {
     /// how far off each vote's match was.
     votes: Vec<Vec<u32>>,
     distances: Vec<Vec<f32>>,
+    /// The same for the runner-up of each vote.
+    runner_up: Vec<Vec<f32>>,
 }
 
 impl LineupReader {
     pub fn new(refs: References) -> Self {
         let votes = vec![vec![0; refs.len()]; 10];
         let distances = vec![vec![0.0; refs.len()]; 10];
+        let runner_up = distances.clone();
         Self {
             refs,
             votes,
             distances,
+            runner_up,
         }
     }
 
@@ -186,9 +200,10 @@ impl LineupReader {
             if slot.dead {
                 continue;
             }
-            if let Some((best, d)) = self.refs.portraits.best(&portrait(&image, i)) {
+            if let Some((best, d, second)) = self.refs.portraits.best_two(&portrait(&image, i)) {
                 self.votes[i][best] += 1;
                 self.distances[i][best] += d;
+                self.runner_up[i][best] += second;
             }
         }
     }
@@ -229,6 +244,15 @@ impl LineupReader {
                 .max_by_key(|&(_, &n)| n)?;
             Some(self.distances[slot][hero] / n.max(1) as f32)
         };
+        // A portrait barely closer to its hero than to the next one is an
+        // alternative look (an arcana or persona), not that hero.
+        for (slot, name) in names.iter_mut().enumerate() {
+            if let Some((hero, _)) = self.votes[slot].iter().enumerate().max_by_key(|&(_, &n)| n)
+                && self.distances[slot][hero] >= MAX_CLOSENESS * self.runner_up[slot][hero]
+            {
+                name.clear();
+            }
+        }
         for a in 0..10 {
             for b in a + 1..10 {
                 if !names[a].is_empty() && names[a] == names[b] {

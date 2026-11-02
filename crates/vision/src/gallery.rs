@@ -87,6 +87,21 @@ impl Gallery {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
+    /// The closest picture, how far off it is, and how far off the next
+    /// closest is.
+    pub fn best_two(&self, picture: &RgbImage) -> Option<(usize, f32, f32)> {
+        let t = thumb(picture, self.size);
+        let mut ranked: Vec<(usize, f32)> = self
+            .thumbs
+            .iter()
+            .map(|r| distance(&t, r))
+            .enumerate()
+            .collect();
+        ranked.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let (best, d) = *ranked.first()?;
+        Some((best, d, ranked.get(1).map_or(f32::MAX, |r| r.1)))
+    }
+
     /// The closest picture, and how far off it is.
     pub fn best(&self, picture: &RgbImage) -> Option<(usize, f32)> {
         let t = thumb(picture, self.size);
