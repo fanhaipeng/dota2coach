@@ -189,10 +189,10 @@ const NAME_BORDER: u32 = 40;
 
 /// The selected hero's name from a panel crop, enlarged for
 /// [`crate::ocr::read_text`]: as it looks, and with only its letters kept
-/// (your own name is gold, others' white), black on a white border, at two
+/// (your own name is gold, others' white), black on a white border, at three
 /// sizes. The world shows through behind the name, and short names need room
 /// around them, so any of them can read best.
-pub fn name_pictures(panel: &RgbImage) -> [RgbImage; 3] {
+pub fn name_pictures(panel: &RgbImage) -> [RgbImage; 6] {
     let panel = at_detail(panel);
     let strip = image::imageops::crop_imm(&*panel, NAME_X, NAME_Y, NAME_W, NAME_H).to_image();
     let zoom = |z: u32| {
@@ -220,7 +220,27 @@ pub fn name_pictures(panel: &RgbImage) -> [RgbImage; 3] {
         }
         out
     };
-    [zoom(NAME_ZOOM), letters(3), letters(6)]
+    // Strictly gold or strictly white letters, edge to edge: these read some
+    // names the bordered ones miss.
+    let strict = |letter: fn(i32, i32, i32) -> bool| {
+        let big = zoom(NAME_ZOOM);
+        RgbImage::from_fn(big.width(), big.height(), |x, y| {
+            let [r, g, b] = big.get_pixel(x, y).0.map(i32::from);
+            image::Rgb(if letter(r, g, b) {
+                [0, 0, 0]
+            } else {
+                [255, 255, 255]
+            })
+        })
+    };
+    [
+        zoom(NAME_ZOOM),
+        letters(3),
+        letters(NAME_ZOOM),
+        letters(6),
+        strict(|r, g, b| r > 170 && g > 130 && b < 140 && r - b > 60),
+        strict(|r, g, b| r.min(g).min(b) > 175 && r.max(g).max(b) - r.min(g).min(b) < 40),
+    ]
 }
 /// The spread of brightness across a picture.
 fn busyness(image: &RgbImage) -> f32 {

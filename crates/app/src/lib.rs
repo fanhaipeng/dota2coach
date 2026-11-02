@@ -452,7 +452,9 @@ impl PanelItems {
                 Some(hero) => hero.strip_prefix("npc_dota_hero_") == Some(s.hero.as_str()),
                 None => items.is_empty() || yours * 2 >= items.len(),
             };
-            if !is_you {
+            // A panel with no items tells nothing (and may be a unit, not a
+            // hero).
+            if !is_you && !items.is_empty() {
                 let (seen, at) = &mut self.seen[usize::from(side == vision::items::Side::Enemy)];
                 for &item in &items {
                     if !seen.contains(item) {
@@ -606,16 +608,16 @@ impl PanelNamer {
 
     /// The selected hero, out of `candidates` (the lineup).
     pub fn name(&mut self, panel: &image::RgbImage, candidates: &[String]) -> Option<String> {
-        let [plain, small, large] = vision::items::name_pictures(panel);
+        let pictures = vision::items::name_pictures(panel);
         if let Some((letters, hero)) = &self.last
-            && differing(&letters[0], &small) < SAME_LETTERS
-            && differing(&letters[1], &large) < SAME_LETTERS
+            && differing(&letters[0], &pictures[1]) < SAME_LETTERS
+            && differing(&letters[1], &pictures[3]) < SAME_LETTERS
         {
             return hero.clone();
         }
         let mut texts = Vec::new();
         for lang in &self.languages {
-            for picture in [&plain, &small, &large] {
+            for picture in &pictures {
                 if let Ok(text) = vision::ocr::read_text(picture, lang)
                     && !text.trim().is_empty()
                 {
@@ -624,6 +626,7 @@ impl PanelNamer {
             }
         }
         let hero = self.names.identify(&texts, candidates).map(str::to_owned);
+        let [_, small, _, large, ..] = pictures;
         self.last = Some(([small, large], hero.clone()));
         hero
     }
