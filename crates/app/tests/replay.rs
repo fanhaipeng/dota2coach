@@ -312,6 +312,10 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemies_seen: 2,
                     enemies_near: if t % 90 < 30 { 2 } else { 0 },
                     enemies_missing: if t % 300 < 60 { 4 } else { 0 },
+                    // The lineup: an invisible hero and lots of magic.
+                    enemy_heroes: ["riki", "lion", "lina", "zuus", "huskar"]
+                        .map(|h| format!("npc_dota_hero_{h}"))
+                        .to_vec(),
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -524,4 +528,54 @@ fn reads_the_minimap_around_you() {
     assert_eq!(at(601, 2, 1), 0, "one died, two still seen");
     assert_eq!(at(605, 0, 1), 2);
     assert_eq!(at(630, 0, 1), 0, "too long ago to count");
+}
+
+/// Counter items depend on the enemy lineup, your role and what you own.
+#[test]
+fn suggests_counter_items_for_the_lineup() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let advise = |role: &str, enemies: &[&str], items: &[&str]| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let snapshot = GameSnapshot {
+            in_game: true,
+            clock_time: 1300,
+            role: role.into(),
+            alive: false,
+            items: items.iter().map(|i| i.to_string()).collect(),
+            enemy_heroes: enemies
+                .iter()
+                .map(|h| format!("npc_dota_hero_{h}"))
+                .collect(),
+            ..Default::default()
+        };
+        engine
+            .advise(&snapshot)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/counters")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    let lineup = ["riki", "lion", "lina", "zuus", "phantom_assassin"];
+    assert_eq!(
+        advise("pos5", &lineup, &[]),
+        ["They have Riki. Carry Dust and Sentry wards."]
+    );
+    assert_eq!(
+        advise("pos1", &lineup, &["item_dust"]),
+        ["Lots of magic and stuns on their side. Black King Bar next."]
+    );
+    assert_eq!(
+        advise("pos1", &lineup, &["item_dust", "item_black_king_bar"]),
+        ["Against Lion, get Linken's Sphere to block the lockdown."]
+    );
+    assert_eq!(
+        advise(
+            "pos1",
+            &lineup,
+            &["item_dust", "item_black_king_bar", "item_sphere"]
+        ),
+        ["Against Phantom Assassin, Monkey King Bar or Bloodthorn hits through evasion."]
+    );
+    assert!(advise("pos1", &[], &[]).is_empty(), "lineup not read yet");
 }
