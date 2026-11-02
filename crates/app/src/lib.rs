@@ -295,6 +295,77 @@ pub fn apply_top_bar(s: &mut GameSnapshot, bar: &vision::topbar::TopBar) {
     s.allies_dead = (allies.iter().filter(out).count() as i64 - i64::from(you)).max(0);
 }
 
+/// Where `fetch-heroes` saves Valve's hero portraits.
+pub const DEFAULT_HEROES_DIR: &str = "assets/heroes";
+/// The public list of heroes with their portrait paths.
+const HEROES_JSON: &str =
+    "https://raw.githubusercontent.com/odota/dotaconstants/master/build/heroes.json";
+const STEAM_CDN: &str = "https://cdn.cloudflare.steamstatic.com";
+
+/// Downloads every hero's portrait into `dir` as `<short name>.png`, for
+/// [`vision::heroes::References::load`]. Returns how many were saved.
+pub async fn fetch_heroes(dir: &Path) -> anyhow::Result<usize> {
+    #[derive(serde::Deserialize)]
+    struct Hero {
+        name: String,
+        img: String,
+    }
+    let client = reqwest::Client::new();
+    let heroes: BTreeMap<String, Hero> = client
+        .get(HEROES_JSON)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    std::fs::create_dir_all(dir)?;
+    let mut saved = 0;
+    for hero in heroes.values() {
+        let Some(short) = hero.name.strip_prefix("npc_dota_hero_") else {
+            continue;
+        };
+        // `img` looks like `/apps/dota2/images/dota_react/heroes/axe.png?`.
+        let path = hero.img.split('?').next().unwrap_or_default();
+        let bytes = client
+            .get(format!("{STEAM_CDN}{path}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+        // Check it's an image before keeping it.
+        image::load_from_memory(&bytes)?;
+        std::fs::write(dir.join(format!("{short}.png")), &bytes)?;
+        saved += 1;
+    }
+    Ok(saved)
+}
+
+/// The hero portraits folder: the one given if it exists, else
+/// [`DEFAULT_HEROES_DIR`] here or next to the executable. `None` until
+/// `fetch-heroes` has been run.
+pub fn resolve_heroes_dir(explicit: Option<&Path>) -> Option<PathBuf> {
+    let candidates = [
+        explicit.map(Path::to_owned),
+        Some(PathBuf::from(DEFAULT_HEROES_DIR)),
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| Some(exe.parent()?.join(DEFAULT_HEROES_DIR))),
+    ];
+    candidates.into_iter().flatten().find(|dir| dir.is_dir())
+}
+
+/// Fills the snapshot's hero names from a lineup read off the top bar.
+pub fn apply_lineup(s: &mut GameSnapshot, lineup: &vision::heroes::Lineup) {
+    let (allies, enemies) = match s.team.as_str() {
+        "radiant" => (&lineup.radiant, &lineup.dire),
+        "dire" => (&lineup.dire, &lineup.radiant),
+        _ => return,
+    };
+    s.ally_heroes = allies.to_vec();
+    s.enemy_heroes = enemies.to_vec();
+}
+
 /// An ally icon this close to where GSI puts you is you.
 const YOU_RADIUS: f64 = 500.0;
 /// How long a seen enemy is remembered when counting the missing.

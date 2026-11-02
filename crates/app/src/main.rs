@@ -6,8 +6,9 @@ use clap::{Parser, Subcommand};
 use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
-    CoachConfig, MissingEnemies, Recording, apply_minimap, apply_top_bar, latest_recording,
-    resolve_rules_dir, review_file, run_coach, steam,
+    CoachConfig, DEFAULT_HEROES_DIR, MissingEnemies, Recording, apply_lineup, apply_minimap,
+    apply_top_bar, fetch_heroes, latest_recording, resolve_heroes_dir, resolve_rules_dir,
+    review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -134,6 +135,12 @@ enum Cmd {
         #[arg(long, default_value = DEFAULT_TOKEN)]
         token: String,
     },
+    /// Download Valve's hero portraits, which `run --screen` matches against
+    /// the top bar to tell who is playing. They stay in DIR on this computer.
+    FetchHeroes {
+        #[arg(long, default_value = DEFAULT_HEROES_DIR)]
+        dir: PathBuf,
+    },
     /// Print the GSI config file to put in Dota's gamestate_integration folder.
     GsiConfig {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -191,6 +198,10 @@ async fn main() -> anyhow::Result<()> {
             port,
             token,
         } => setup(dota_dir, port, &token)?,
+        Cmd::FetchHeroes { dir } => {
+            let saved = fetch_heroes(&dir).await?;
+            println!("saved {saved} hero portraits to {}", dir.display());
+        }
         Cmd::GsiConfig { port, token } => {
             print!("{}", gsi::server::config_file(port, &token));
         }
@@ -221,7 +232,14 @@ async fn main() -> anyhow::Result<()> {
             let (screen_tx, screen_rx) = watch::channel(None);
             if screen {
                 info!("reading the top bar and the minimap from the screen");
-                read_screen(clock_rx, screen_tx);
+                let heroes = match resolve_heroes_dir(None) {
+                    Some(dir) => Some(vision::heroes::References::load(&dir)?),
+                    None => {
+                        info!("run `dota2coach fetch-heroes` once to also read who is playing");
+                        None
+                    }
+                };
+                read_screen(clock_rx, screen_tx, heroes);
             }
             let mut missing = MissingEnemies::default();
             let mut observe = |s: &mut GameSnapshot| {
@@ -235,6 +253,9 @@ async fn main() -> anyhow::Result<()> {
                 {
                     apply_top_bar(s, &read.bar);
                     apply_minimap(s, &read.map);
+                    if let Some(lineup) = &read.lineup {
+                        apply_lineup(s, lineup);
+                    }
                     missing.observe(s);
                 }
             };
@@ -339,16 +360,25 @@ struct ScreenRead {
     at: Instant,
     bar: vision::topbar::TopBar,
     map: vision::minimap::Minimap,
+    /// Who is playing, once read.
+    lineup: Option<vision::heroes::Lineup>,
 }
 
 /// Reads the top bar and the minimap on its own thread while a match is
 /// live, publishing each reading with when it was taken.
-fn read_screen(clock: watch::Receiver<GameClock>, out: watch::Sender<Option<ScreenRead>>) {
+fn read_screen(
+    clock: watch::Receiver<GameClock>,
+    out: watch::Sender<Option<ScreenRead>>,
+    heroes: Option<vision::heroes::References>,
+) {
     std::thread::spawn(move || {
         let mut screen: Option<DotaScreen> = None;
         let mut failing = false;
         // The minimap reader learns where the buildings are, per match.
         let mut minimap = (String::new(), vision::minimap::Reader::default());
+        // The lineup is read by voting over frames until it's sure, per match.
+        let new_lineup = || heroes.clone().map(vision::heroes::LineupReader::new);
+        let mut lineup = (new_lineup(), None);
         while !out.is_closed() {
             std::thread::sleep(SCREEN_EVERY);
             let now = clock.borrow().clone();
@@ -357,6 +387,7 @@ fn read_screen(clock: watch::Receiver<GameClock>, out: watch::Sender<Option<Scre
             }
             if minimap.0 != now.match_id {
                 minimap = (now.match_id, vision::minimap::Reader::default());
+                lineup = (new_lineup(), None);
             }
             let capture = |s: &DotaScreen| anyhow::Ok((s.top_bar()?, s.minimap()?));
             let read = match &screen {
@@ -368,12 +399,23 @@ fn read_screen(clock: watch::Receiver<GameClock>, out: watch::Sender<Option<Scre
                 }),
             };
             match read {
-                Ok((bar, map)) => {
+                Ok((bar_image, map)) => {
                     failing = false;
+                    let bar = vision::topbar::read(&bar_image);
+                    if lineup.1.is_none()
+                        && let Some(reader) = &mut lineup.0
+                    {
+                        reader.observe(&bar_image, &bar);
+                        lineup.1 = reader.lineup();
+                        if let Some(read) = &lineup.1 {
+                            info!(radiant = ?read.radiant, dire = ?read.dire, "read the lineup");
+                        }
+                    }
                     out.send_replace(Some(ScreenRead {
                         at: Instant::now(),
-                        bar: vision::topbar::read(&bar),
+                        bar,
                         map: minimap.1.read(&map),
+                        lineup: lineup.1.clone(),
                     }));
                 }
                 Err(err) => {

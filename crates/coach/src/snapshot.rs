@@ -96,6 +96,13 @@ pub struct GameSnapshot {
     /// Enemies seen on the minimap in the last few seconds that have since
     /// vanished without dying.
     pub enemies_missing: i64,
+
+    /// Who is playing, read from the top bar's portraits (`run --screen`,
+    /// after `fetch-heroes`): internal names like
+    /// `npc_dota_hero_phantom_assassin`, left to right. Empty until the
+    /// lineup has been read with confidence.
+    pub ally_heroes: Vec<String>,
+    pub enemy_heroes: Vec<String>,
 }
 
 /// World units within which a hero counts as near you: about a screen.

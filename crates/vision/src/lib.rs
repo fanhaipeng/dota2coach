@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
 
+pub mod heroes;
 pub mod minimap;
 pub mod topbar;
 
