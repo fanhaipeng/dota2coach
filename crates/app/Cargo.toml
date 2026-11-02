@@ -20,3 +20,4 @@ voice = { version = "0.1.0", path = "../voice" }
 [dev-dependencies]
 axum = "0.8.9"
 toml = "1.1.8"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }

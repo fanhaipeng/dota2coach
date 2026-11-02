@@ -82,7 +82,24 @@ pub struct GameSnapshot {
     pub dead_window: i64,
     /// Teammates dead, not counting you.
     pub allies_dead: i64,
+
+    /// The fields below come from the minimap (`run --screen`), counting
+    /// only heroes you can see.
+    pub enemies_seen: i64,
+    /// World units to the nearest enemy seen; -1 when none is (0 while the
+    /// minimap isn't being read).
+    pub nearest_enemy: i64,
+    /// Enemies seen within [`NEAR`] of you.
+    pub enemies_near: i64,
+    /// Teammates seen within [`NEAR`] of you, not counting you.
+    pub allies_near: i64,
+    /// Enemies seen on the minimap in the last few seconds that have since
+    /// vanished without dying.
+    pub enemies_missing: i64,
 }
+
+/// World units within which a hero counts as near you: about a screen.
+pub const NEAR: i64 = 1500;
 
 /// A dead enemy with this many seconds left counts as out of the game for long
 /// enough to take an objective.

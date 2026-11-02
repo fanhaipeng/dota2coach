@@ -644,6 +644,7 @@ dependencies = [
  "clap",
  "coach",
  "gsi",
+ "image",
  "reqwest",
  "serde",
  "serde_json",

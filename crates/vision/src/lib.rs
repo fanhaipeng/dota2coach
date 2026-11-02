@@ -6,12 +6,14 @@
 //!
 //! Step one is capture: grab the screen Dota is on and save frames during a
 //! match, so the readers can be built and tested against real games. The
-//! first reader is [`topbar`]: who is dead and their respawn timers.
+//! readers are [`topbar`], who is dead and their respawn timers, and
+//! [`minimap`], where the heroes you can see are.
 
 use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
 
+pub mod minimap;
 pub mod topbar;
 
 /// The screen Dota 2 is on, captured once.
@@ -68,6 +70,13 @@ impl DotaScreen {
         let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
         Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
     }
+
+    /// The minimap, ready for [`minimap::Reader::read`].
+    pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
+        let r = minimap_area(self.width, self.height);
+        let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
+        Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
+    }
 }
 
 #[cfg(not(windows))]
@@ -80,6 +89,10 @@ impl DotaScreen {
     }
 
     pub fn top_bar(&self) -> anyhow::Result<image::RgbImage> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+
+    pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
         anyhow::bail!("screen reading is only supported on Windows for now")
     }
 }
