@@ -10,7 +10,7 @@
 //
 // Only what you can use is said: water and power runes when you're near the
 // river spots they spawn at, the healing lotus when you're near its pool, bounty runes and wisdom shrines to supports (who
-// take them) and while your role isn't known yet.
+// take them).
 
 // Where water and power runes spawn: the top and bottom river spots, in world
 // units (approximate). Within 3500 units counts as near.
@@ -32,7 +32,7 @@ fn near_lotus_pool(s) {
 }
 
 fn takes_side_runes(s) {
-    s.role == "" || s.role == "pos4" || s.role == "pos5"
+    s.role == "pos4" || s.role == "pos5"
 }
 
 fn soon(t, every, first) {
