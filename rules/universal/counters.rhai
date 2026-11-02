@@ -1,6 +1,7 @@
 // Counter items against the enemy lineup, read from the top bar's portraits
 // (`run --screen`, after `fetch-heroes`). Says at most one suggestion at a
-// time, when you are shopping (dead, or carrying 1000+ gold), and only for
+// time, at most every 10 minutes, when you are shopping (dead, or carrying
+// 1000+ gold), and only for
 // items you don't already have.
 //
 // Each counter lists the enemy heroes it answers (internal names without
@@ -116,6 +117,6 @@ fn check(s) {
         let pick = c.roles[s.role];
         if found.len() < c.min || owns_any(s, pick[1]) { continue; }
         found.truncate(2);
-        return #{ msg: pick[0], args: #{ heroes: found }, priority: 1, cooldown: 240 };
+        return #{ msg: pick[0], args: #{ heroes: found }, priority: 1, cooldown: 600 };
     }
 }
