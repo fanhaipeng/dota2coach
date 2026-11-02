@@ -14,20 +14,21 @@
 
 // Where water and power runes spawn: the top and bottom river spots, in world
 // units (approximate). Within 3500 units counts as near.
-fn near(s, x, y) {
+fn near(s, x, y, within) {
     let dx = s.xpos - x;
     let dy = s.ypos - y;
-    dx * dx + dy * dy < 3500 * 3500
+    dx * dx + dy * dy < within * within
 }
 
 fn near_river_rune(s) {
-    near(s, -1760, 1216) || near(s, 1168, -1200)
+    near(s, -1760, 1216, 3500) || near(s, 1168, -1200, 3500)
 }
 
 // The lotus pools near the top-left and bottom-right corners, measured on the
-// minimap (about 200 units off at most).
+// minimap (about 200 units off at most). Within 2500 units, about a screen
+// and a half, counts as near.
 fn near_lotus_pool(s) {
-    near(s, -7530, 4060) || near(s, 7530, -4550)
+    near(s, -7530, 4060, 2500) || near(s, 7530, -4550, 2500)
 }
 
 fn takes_side_runes(s) {

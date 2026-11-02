@@ -14,5 +14,5 @@ fn check(s) {
     if s.stale_enemy == "" || s.clock_time < 300 { return; }
     if s.alive && !at_fountain(s) { return; }
     let hero = "hero." + s.stale_enemy.sub_string(14);
-    #{ msg: "screen.check_items", args: #{ hero: [hero] }, priority: 1, cooldown: 90 }
+    #{ msg: "screen.check_items", args: #{ hero: [hero] }, priority: 1, cooldown: 240 }
 }
