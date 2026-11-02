@@ -13,6 +13,15 @@ typical targets for cores (tune the numbers in `last_hits.rhai` and `gpm.rhai`
 for your bracket), rune control for mid, wards, rotations and stacking for
 supports.
 
+`universal/counters.rhai` suggests counter items against the enemy lineup
+read from the screen (`run --screen`, after `fetch-heroes`): Dust against
+invisible heroes, BKB against lots of magic, Spirit Vessel against healing and
+so on, depending on your role. Items seen on an enemy when you click them count
+too: Shadow Blade on anyone means Dust. `universal/check_items.rhai` asks you to
+click an enemy whose items haven't been read for 5 minutes, while you're dead
+or at the fountain. Its hero lists are at the top of the file, and
+hero names are in the `hero` table of the language files.
+
 Hero folders use Dota's internal names, which don't always match the hero's
 name: Zeus is `zuus`, Troll Warlord is `troll_warlord`. Packs so far: `axe`
 (example), `slardar`, `sniper`, `troll_warlord`, `ursa`, `viper`, `zuus`.

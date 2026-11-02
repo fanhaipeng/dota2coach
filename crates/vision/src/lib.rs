@@ -13,7 +13,11 @@ use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
 
+mod gallery;
+pub mod heroes;
+pub mod items;
 pub mod minimap;
+pub mod ocr;
 pub mod topbar;
 
 /// The screen Dota 2 is on, captured once.
@@ -71,6 +75,20 @@ impl DotaScreen {
         Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
     }
 
+    /// The ability and item panel, ready for [`items::Icons::inventory`].
+    pub fn panel(&self) -> anyhow::Result<image::RgbImage> {
+        let r = bottom_panel_area(self.width, self.height);
+        let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
+        Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
+    }
+
+    /// The first quick-buy slot, ready for [`quickbuy_set`].
+    pub fn quickbuy(&self) -> anyhow::Result<image::RgbImage> {
+        let r = quickbuy_area(self.width, self.height);
+        let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
+        Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
+    }
+
     /// The minimap, ready for [`minimap::Reader::read`].
     pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
         let r = minimap_area(self.width, self.height);
@@ -93,6 +111,14 @@ impl DotaScreen {
     }
 
     pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+
+    pub fn panel(&self) -> anyhow::Result<image::RgbImage> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+
+    pub fn quickbuy(&self) -> anyhow::Result<image::RgbImage> {
         anyhow::bail!("screen reading is only supported on Windows for now")
     }
 }
@@ -177,6 +203,37 @@ pub fn top_bar_area(width: u32, height: u32) -> Rect {
         width: band,
         height: height * 65 / 1000,
     }
+}
+
+/// The first slot of the quick-buy tray, above the gold count in the bottom
+/// right corner, sized by screen height.
+pub fn quickbuy_area(width: u32, height: u32) -> Rect {
+    let x = width.saturating_sub(height * 265 / 1000);
+    let y = height - height * 93 / 1000;
+    Rect {
+        x,
+        y,
+        width: height * 39 / 1000,
+        height: height * 28 / 1000,
+    }
+}
+
+/// Mean colourfulness above which the quick-buy slot holds an item; empty,
+/// it shows a grey hint.
+const QUICKBUY_COLOUR: u32 = 25;
+
+/// Whether an item is queued for quick-buy, from a crop of
+/// [`quickbuy_area`] at any size.
+pub fn quickbuy_set(slot: &image::RgbImage) -> bool {
+    let n = (slot.width() * slot.height()).max(1);
+    let colour: u32 = slot
+        .pixels()
+        .map(|p| {
+            let [r, g, b] = p.0;
+            u32::from(r.max(g).max(b) - r.min(g).min(b))
+        })
+        .sum();
+    colour / n >= QUICKBUY_COLOUR
 }
 
 /// Where the hero's portrait, abilities and item slots are: a band along the
@@ -298,6 +355,16 @@ mod tests {
         );
         // Ultrawide: same size as 1440p, centred.
         assert_eq!(top_bar_area(3440, 1440).x, (3440 - 1180) / 2);
+    }
+
+    #[test]
+    fn sees_an_item_queued_for_quick_buy() {
+        let r = quickbuy_area(3840, 2160);
+        assert_eq!((r.x, r.y, r.width, r.height), (3268, 1960, 84, 60));
+        let hint = image::RgbImage::from_pixel(84, 60, image::Rgb([120, 120, 125]));
+        assert!(!quickbuy_set(&hint));
+        let blade = image::RgbImage::from_pixel(84, 60, image::Rgb([60, 170, 70]));
+        assert!(quickbuy_set(&blade));
     }
 
     #[test]

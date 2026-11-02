@@ -50,7 +50,8 @@ async fn coaches_the_sample_game() {
 
     assert!(said("Water runes in 15 seconds."), "{spoken:#?}");
     assert!(said("You have no TP scroll."), "{spoken:#?}");
-    assert!(said("Power and Bounty runes in 15 seconds."), "{spoken:#?}");
+    // A carry near the river hears about power runes, not bounty runes.
+    assert!(said("Power runes in 15 seconds."), "{spoken:#?}");
     assert!(said("Low health. Back off."), "{spoken:#?}");
     assert!(
         said("Laning is ending. Plan your farming route."),
@@ -79,7 +80,7 @@ async fn coaches_the_sample_game_in_chinese() {
     let said = |text: &str| spoken.iter().any(|s| s == text);
 
     assert!(said("水符15秒后刷新。"), "{spoken:#?}");
-    assert!(said("能量符和赏金符15秒后刷新。"), "{spoken:#?}");
+    assert!(said("能量符15秒后刷新。"), "{spoken:#?}");
     assert!(said("你身上没有回城卷轴。"), "{spoken:#?}");
     assert!(said("血量低，快撤退。"), "{spoken:#?}");
     assert!(said("对线期快结束了，规划好你的打钱路线。"), "{spoken:#?}");
@@ -93,7 +94,8 @@ async fn coaches_the_sample_game_in_chinese() {
 }
 
 /// Every message key a rule can use must exist in English (the fallback), and
-/// every shipped language should translate all of them.
+/// every shipped language should translate all of them. Hero nicknames
+/// (`[hero_alias]`) are each language's own.
 #[test]
 fn every_language_translates_every_message() {
     let root = repo().join("rules");
@@ -105,6 +107,8 @@ fn every_language_translates_every_message() {
             let table: toml::Table = text.parse().unwrap();
             let mut out = Vec::new();
             flatten("", &table, &mut out);
+            // Nicknames for recognising hero names differ by language.
+            out.retain(|k| !k.starts_with("hero_alias."));
             out.sort();
             out
         };
@@ -239,7 +243,8 @@ async fn detects_the_role_and_loads_its_pack() {
     assert!(
         spoken
             .iter()
-            .any(|s| s == "You look like the offlaner, position 3. Coaching for that role."),
+            .any(|s| s
+                == "You seem to be playing offlaner, position 3, so I'll coach for that for now."),
         "{spoken:#?}"
     );
     // The detected pos3 pack is loaded, so its end-of-laning rule fires.
@@ -252,7 +257,7 @@ async fn detects_the_role_and_loads_its_pack() {
     assert_eq!(
         spoken
             .iter()
-            .filter(|s| s.starts_with("You look like"))
+            .filter(|s| s.starts_with("You seem to be playing"))
             .count(),
         1
     );
@@ -261,7 +266,7 @@ async fn detects_the_role_and_loads_its_pack() {
     assert!(
         spoken
             .iter()
-            .any(|s| s == "看起来你在打二号位中单，接下来按这个位置给建议。"),
+            .any(|s| s == "你好像在打二号位中单，先按这个位置给建议。"),
         "{spoken:#?}"
     );
 }
@@ -292,7 +297,7 @@ fn every_role_rule_fires_in_a_bad_game() {
                     in_game: true,
                     clock_time: t,
                     role: role.clone(),
-                    alive: true,
+                    alive: t % 400 < 380,
                     health_percent: if t % 100 < 50 { 100 } else { 20 },
                     gold: 2500,
                     deaths: 5,
@@ -312,6 +317,12 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemies_seen: 2,
                     enemies_near: if t % 90 < 30 { 2 } else { 0 },
                     enemies_missing: if t % 300 < 60 { 4 } else { 0 },
+                    // The lineup: an invisible hero and lots of magic.
+                    enemy_heroes: ["riki", "lion", "lina", "zuus", "huskar"]
+                        .map(|h| format!("npc_dota_hero_{h}"))
+                        .to_vec(),
+                    // The item panel: Lion's items not read for a while.
+                    stale_enemy: "npc_dota_hero_lion".into(),
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -524,4 +535,297 @@ fn reads_the_minimap_around_you() {
     assert_eq!(at(601, 2, 1), 0, "one died, two still seen");
     assert_eq!(at(605, 0, 1), 2);
     assert_eq!(at(630, 0, 1), 0, "too long ago to count");
+}
+
+/// Counter items depend on the enemy lineup, your role and what you own.
+#[test]
+fn suggests_counter_items_for_the_lineup() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let advise = |role: &str, enemies: &[&str], items: &[&str]| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let snapshot = GameSnapshot {
+            in_game: true,
+            clock_time: 1300,
+            role: role.into(),
+            alive: false,
+            items: items.iter().map(|i| i.to_string()).collect(),
+            enemy_heroes: enemies
+                .iter()
+                .map(|h| format!("npc_dota_hero_{h}"))
+                .collect(),
+            ..Default::default()
+        };
+        engine
+            .advise(&snapshot)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/counters")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    let lineup = ["riki", "lion", "lina", "zuus", "phantom_assassin"];
+    assert_eq!(
+        advise("pos5", &lineup, &[]),
+        ["They have Riki. Carry Dust and Sentry wards."]
+    );
+    assert_eq!(
+        advise("pos1", &lineup, &["item_dust"]),
+        ["Lots of magic and stuns on their side. Black King Bar next."]
+    );
+    assert_eq!(
+        advise("pos1", &lineup, &["item_dust", "item_black_king_bar"]),
+        ["Against Lion, get Linken's Sphere to block the lockdown."]
+    );
+    assert_eq!(
+        advise(
+            "pos1",
+            &lineup,
+            &["item_dust", "item_black_king_bar", "item_sphere"]
+        ),
+        ["Against Phantom Assassin, Monkey King Bar or Bloodthorn hits through evasion."]
+    );
+    assert!(advise("pos1", &[], &[]).is_empty(), "lineup not read yet");
+}
+
+#[test]
+fn remembers_items_of_selected_heroes() {
+    use coach::GameSnapshot;
+    use dota2coach::{PanelItems, PanelRead};
+    use vision::items::Side;
+
+    let items = |names: &[&str]| -> [Option<String>; 6] {
+        std::array::from_fn(|i| names.get(i).map(|n| n.to_string()))
+    };
+    let mut panel = PanelItems::default();
+    let mut at = |clock, read: Option<PanelRead>| {
+        let mut s = GameSnapshot {
+            match_id: "1".into(),
+            clock_time: clock,
+            items: vec!["item_blink".into(), "item_tpscroll".into()],
+            enemy_heroes: vec![
+                "npc_dota_hero_phantom_assassin".into(),
+                "npc_dota_hero_lion".into(),
+            ],
+            ..Default::default()
+        };
+        panel.observe(&mut s, read.as_ref());
+        s
+    };
+    let s = at(100, None);
+    assert_eq!((s.enemy_items_age, s.ally_items_age), (-1, -1));
+
+    // Your own panel, even if its bar looks red while you're dead.
+    let s = at(
+        110,
+        Some(PanelRead {
+            side: Some(Side::Enemy),
+            hero: None,
+            items: items(&["item_blink"]),
+        }),
+    );
+    assert!(s.enemy_items.is_empty());
+
+    let s = at(
+        120,
+        Some(PanelRead {
+            side: Some(Side::Enemy),
+            hero: Some("npc_dota_hero_phantom_assassin".into()),
+            items: items(&["item_desolator", "item_power_treads"]),
+        }),
+    );
+    assert_eq!(s.enemy_items, ["item_desolator", "item_power_treads"]);
+    assert_eq!(s.enemy_items_age, 0);
+
+    let s = at(
+        200,
+        Some(PanelRead {
+            side: Some(Side::Ally),
+            hero: None,
+            items: items(&["item_ward_dispenser"]),
+        }),
+    );
+    assert_eq!(s.ally_items, ["item_ward_dispenser"]);
+    assert_eq!(s.enemy_items_age, 80);
+    assert_eq!(
+        s.hero_items["npc_dota_hero_phantom_assassin"],
+        ["item_desolator", "item_power_treads"]
+    );
+    assert_eq!(s.hero_items_age["npc_dota_hero_phantom_assassin"], 80);
+    assert_eq!(s.stale_enemy, "", "nothing 5 minutes old yet");
+    let s = at(400, None);
+    assert_eq!(s.stale_enemy, "npc_dota_hero_lion", "never read");
+    let s = at(450, None);
+    assert_eq!(
+        s.stale_enemy, "npc_dota_hero_lion",
+        "older than PA's read at 120"
+    );
+}
+
+#[test]
+fn recognises_hero_names_in_any_language() {
+    use dota2coach::HeroNames;
+    let names = HeroNames::load(&repo().join("rules")).unwrap();
+    let lineup: Vec<String> = ["ursa", "lycan", "zuus", "vengefulspirit", "slardar"]
+        .iter()
+        .map(|h| format!("npc_dota_hero_{h}"))
+        .collect();
+    let read = |texts: &[&str]| {
+        let texts: Vec<String> = texts.iter().map(|t| t.to_string()).collect();
+        names.identify(&texts, &lineup).map(str::to_owned)
+    };
+    // As Windows text recognition read them, misreads included.
+    assert_eq!(read(&["能 战 士"]).as_deref(), Some("npc_dota_hero_ursa"));
+    assert_eq!(
+        read(&["复 仇 之 7"]).as_deref(),
+        Some("npc_dota_hero_vengefulspirit")
+    );
+    assert_eq!(read(&["ZEUS"]).as_deref(), Some("npc_dota_hero_zuus"));
+    assert_eq!(read(&[""]), None);
+    // Nicknames count too.
+    let dire: Vec<String> = ["sven", "juggernaut", "tidehunter", "terrorblade"]
+        .iter()
+        .map(|h| format!("npc_dota_hero_{h}"))
+        .collect();
+    let read = |text: &str| names.identify(&[text.to_owned()], &dire).map(str::to_owned);
+    assert_eq!(read("剑 圣").as_deref(), Some("npc_dota_hero_juggernaut"));
+    assert_eq!(read("潮 汐").as_deref(), Some("npc_dota_hero_tidehunter"));
+}
+
+/// Items seen on an enemy count like the hero itself, and the coach asks for
+/// a click on an enemy whose items are old, while it's safe to look.
+#[test]
+fn uses_the_items_read_on_enemies() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+    let axe = "npc_dota_hero_axe".to_string();
+    let mut s = GameSnapshot {
+        in_game: true,
+        clock_time: 1300,
+        team: "radiant".into(),
+        role: "pos5".into(),
+        alive: true,
+        gold: 1200,
+        enemy_heroes: vec![axe.clone()],
+        hero_items: [(axe.clone(), vec!["item_invis_sword".into()])].into(),
+        stale_enemy: axe,
+        ..Default::default()
+    };
+    let said = |engine: &mut RuleEngine, s: &GameSnapshot, rule: &str| {
+        engine
+            .advise(s)
+            .into_iter()
+            .filter(|a| a.rule_id == rule)
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        said(&mut engine, &s, "universal/counters"),
+        ["They have Axe. Carry Dust and Sentry wards."]
+    );
+    assert!(
+        said(&mut engine, &s, "universal/check_items").is_empty(),
+        "out on the map"
+    );
+    (s.xpos, s.ypos) = (-7000, -6600);
+    assert_eq!(
+        said(&mut engine, &s, "universal/check_items"),
+        ["Click their Axe on the top bar to check the items."]
+    );
+}
+
+/// Rune reminders only for runes you can use: river runes when you're near
+/// them, bounty runes and shrines for supports.
+#[test]
+fn reminds_of_runes_you_can_take() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let said = |role: &str, pos: (i64, i64), clock: i64| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let s = GameSnapshot {
+            in_game: true,
+            clock_time: clock,
+            role: role.into(),
+            alive: true,
+            xpos: pos.0,
+            ypos: pos.1,
+            items: vec!["item_tpscroll".into()],
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/runes")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    let mid = (-600, -400);
+    let far_jungle = (-6000, -6000);
+    assert_eq!(said("pos2", mid, 465), ["Power runes in 15 seconds."]);
+    assert!(said("pos1", far_jungle, 465).is_empty());
+    assert_eq!(
+        said("pos5", far_jungle, 465),
+        ["Bounty runes in 15 seconds."]
+    );
+    assert_eq!(
+        said("pos4", far_jungle, 405),
+        ["Wisdom shrines in 15 seconds."]
+    );
+    // 5:45: a lotus at 6:00, and power runes too.
+    let lotus_pool = (-7000, 4000);
+    assert_eq!(
+        said("pos1", lotus_pool, 345),
+        ["A healing lotus in 15 seconds at the pool near you."]
+    );
+    assert_eq!(said("pos1", mid, 345), ["Power runes in 15 seconds."]);
+}
+
+#[test]
+fn learns_a_hero_the_lineup_missed_from_its_name() {
+    use coach::GameSnapshot;
+    use dota2coach::{PanelItems, PanelRead, panel_candidates};
+    use vision::heroes::Lineup;
+    use vision::items::Side;
+
+    let h = |s: &str| format!("npc_dota_hero_{s}");
+    // Anti-Mage with an alternative portrait: the lineup leaves the slot empty.
+    let lineup = Lineup {
+        radiant: [
+            h("clinkz"),
+            String::new(),
+            h("ringmaster"),
+            h("kunkka"),
+            h("sniper"),
+        ],
+        dire: [
+            h("ogre_magi"),
+            h("sven"),
+            h("necrolyte"),
+            h("wisp"),
+            h("juggernaut"),
+        ],
+    };
+    let all = vec![h("antimage"), h("clinkz"), h("axe")];
+    let (known, outsiders) = panel_candidates(Some(&lineup), &all);
+    assert!(known.contains(&h("clinkz")) && !known.contains(&h("antimage")));
+    assert_eq!(outsiders, [h("antimage"), h("axe")]);
+
+    let mut panel = PanelItems::default();
+    let mut s = GameSnapshot {
+        match_id: "1".into(),
+        team: "radiant".into(),
+        hero: "sniper".into(),
+        clock_time: 900,
+        ..Default::default()
+    };
+    dota2coach::apply_lineup(&mut s, &lineup);
+    assert_eq!(s.ally_heroes.len(), 4);
+    let read = PanelRead {
+        side: Some(Side::Ally),
+        hero: Some(h("antimage")),
+        items: std::array::from_fn(|i| (i == 0).then(|| "item_bfury".to_owned())),
+    };
+    panel.observe(&mut s, Some(&read));
+    assert!(s.ally_heroes.contains(&h("antimage")));
+    assert_eq!(s.hero_items[&h("antimage")], ["item_bfury"]);
 }

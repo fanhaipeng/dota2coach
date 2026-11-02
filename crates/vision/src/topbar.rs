@@ -43,14 +43,7 @@ pub struct TopBar {
 /// Reads a top-bar crop. Crops of another size are scaled to 1080p detail
 /// first.
 pub fn read(image: &RgbImage) -> TopBar {
-    let scaled;
-    let image = if image.dimensions() == (WIDTH, HEIGHT) {
-        image
-    } else {
-        scaled =
-            image::imageops::resize(image, WIDTH, HEIGHT, image::imageops::FilterType::Triangle);
-        &scaled
-    };
+    let image = &*at_detail(image);
     let slot = |x: u32| {
         let dead = colour(image, x) < DEAD_COLOUR;
         Slot {
@@ -61,6 +54,20 @@ pub fn read(image: &RgbImage) -> TopBar {
     TopBar {
         radiant: std::array::from_fn(|i| slot(slot_x(true, i))),
         dire: std::array::from_fn(|i| slot(slot_x(false, i))),
+    }
+}
+
+/// A top-bar crop at 1080p detail, scaled if it isn't already.
+pub fn at_detail(image: &RgbImage) -> std::borrow::Cow<'_, RgbImage> {
+    if image.dimensions() == (WIDTH, HEIGHT) {
+        std::borrow::Cow::Borrowed(image)
+    } else {
+        std::borrow::Cow::Owned(image::imageops::resize(
+            image,
+            WIDTH,
+            HEIGHT,
+            image::imageops::FilterType::Triangle,
+        ))
     }
 }
 
