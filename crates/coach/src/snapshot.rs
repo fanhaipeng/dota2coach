@@ -103,6 +103,16 @@ pub struct GameSnapshot {
     /// lineup has been read with confidence.
     pub ally_heroes: Vec<String>,
     pub enemy_heroes: Vec<String>,
+
+    /// Items read off the item panel while you had a teammate or an enemy
+    /// selected (`run --screen`, after `fetch-items`): every item seen on that
+    /// side this match, like `item_black_king_bar`, and the game seconds
+    /// since the last such read (-1 if none yet). Which hero carried each
+    /// item isn't known yet.
+    pub ally_items: Vec<String>,
+    pub ally_items_age: i64,
+    pub enemy_items: Vec<String>,
+    pub enemy_items_age: i64,
 }
 
 /// World units within which a hero counts as near you: about a screen.

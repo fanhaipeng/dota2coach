@@ -297,9 +297,10 @@ pub fn apply_top_bar(s: &mut GameSnapshot, bar: &vision::topbar::TopBar) {
 
 /// Where `fetch-heroes` saves Valve's hero portraits.
 pub const DEFAULT_HEROES_DIR: &str = "assets/heroes";
-/// The public list of heroes with their portrait paths.
-const HEROES_JSON: &str =
-    "https://raw.githubusercontent.com/odota/dotaconstants/master/build/heroes.json";
+/// Where `fetch-items` saves Valve's item icons.
+pub const DEFAULT_ITEMS_DIR: &str = "assets/items";
+/// Public lists of heroes and items with their image paths.
+const DOTACONSTANTS: &str = "https://raw.githubusercontent.com/odota/dotaconstants/master/build";
 const STEAM_CDN: &str = "https://cdn.cloudflare.steamstatic.com";
 
 /// Downloads every hero's portrait into `dir` as `<short name>.png`, for
@@ -310,51 +311,86 @@ pub async fn fetch_heroes(dir: &Path) -> anyhow::Result<usize> {
         name: String,
         img: String,
     }
-    let client = reqwest::Client::new();
-    let heroes: BTreeMap<String, Hero> = client
-        .get(HEROES_JSON)
-        .send()
+    let heroes: BTreeMap<String, Hero> = fetch_json("heroes.json").await?;
+    let images = heroes.into_values().filter_map(|hero| {
+        let short = hero.name.strip_prefix("npc_dota_hero_")?.to_owned();
+        Some((short, hero.img))
+    });
+    fetch_images(dir, images).await
+}
+
+/// Downloads every item's icon into `dir` as `<short name>.png`, for
+/// example `blink.png` for `item_blink`. Returns how many were saved.
+pub async fn fetch_items(dir: &Path) -> anyhow::Result<usize> {
+    #[derive(serde::Deserialize)]
+    struct Item {
+        img: Option<String>,
+    }
+    let items: BTreeMap<String, Item> = fetch_json("items.json").await?;
+    let images = items
+        .into_iter()
+        .filter_map(|(short, item)| Some((short, item.img?)));
+    fetch_images(dir, images).await
+}
+
+async fn fetch_json<T: serde::de::DeserializeOwned>(file: &str) -> anyhow::Result<T> {
+    Ok(reqwest::get(format!("{DOTACONSTANTS}/{file}"))
         .await?
         .error_for_status()?
         .json()
-        .await?;
+        .await?)
+}
+
+/// Saves each (short name, CDN path) image into `dir` as `<short name>.png`.
+async fn fetch_images(
+    dir: &Path,
+    images: impl Iterator<Item = (String, String)>,
+) -> anyhow::Result<usize> {
+    let client = reqwest::Client::new();
     std::fs::create_dir_all(dir)?;
     let mut saved = 0;
-    for hero in heroes.values() {
-        let Some(short) = hero.name.strip_prefix("npc_dota_hero_") else {
+    for (short, img) in images {
+        // Paths look like `/apps/dota2/images/dota_react/heroes/axe.png?`.
+        let path = img.split('?').next().unwrap_or_default();
+        let response = client.get(format!("{STEAM_CDN}{path}")).send().await?;
+        if !response.status().is_success() {
+            warn!(short, status = %response.status(), "skipping an image the CDN doesn't have");
             continue;
-        };
-        // `img` looks like `/apps/dota2/images/dota_react/heroes/axe.png?`.
-        let path = hero.img.split('?').next().unwrap_or_default();
-        let bytes = client
-            .get(format!("{STEAM_CDN}{path}"))
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
-        // Check it's an image before keeping it.
-        image::load_from_memory(&bytes)?;
+        }
+        let bytes = response.bytes().await?;
+        // Keep only real images.
+        if image::load_from_memory(&bytes).is_err() {
+            warn!(short, "skipping a file that isn't an image");
+            continue;
+        }
         std::fs::write(dir.join(format!("{short}.png")), &bytes)?;
         saved += 1;
     }
     Ok(saved)
 }
-
 /// The hero portraits folder: the one given if it exists, else
 /// [`DEFAULT_HEROES_DIR`] here or next to the executable. `None` until
 /// `fetch-heroes` has been run.
 pub fn resolve_heroes_dir(explicit: Option<&Path>) -> Option<PathBuf> {
+    resolve_assets(explicit, DEFAULT_HEROES_DIR)
+}
+
+/// The item icons folder, like [`resolve_heroes_dir`]; `None` until
+/// `fetch-items` has been run.
+pub fn resolve_items_dir(explicit: Option<&Path>) -> Option<PathBuf> {
+    resolve_assets(explicit, DEFAULT_ITEMS_DIR)
+}
+
+fn resolve_assets(explicit: Option<&Path>, default: &str) -> Option<PathBuf> {
     let candidates = [
         explicit.map(Path::to_owned),
-        Some(PathBuf::from(DEFAULT_HEROES_DIR)),
+        Some(PathBuf::from(default)),
         std::env::current_exe()
             .ok()
-            .and_then(|exe| Some(exe.parent()?.join(DEFAULT_HEROES_DIR))),
+            .and_then(|exe| Some(exe.parent()?.join(default))),
     ];
     candidates.into_iter().flatten().find(|dir| dir.is_dir())
 }
-
 /// Fills the snapshot's hero names from a lineup read off the top bar.
 pub fn apply_lineup(s: &mut GameSnapshot, lineup: &vision::heroes::Lineup) {
     let (allies, enemies) = match s.team.as_str() {
@@ -364,6 +400,57 @@ pub fn apply_lineup(s: &mut GameSnapshot, lineup: &vision::heroes::Lineup) {
     };
     s.ally_heroes = allies.to_vec();
     s.enemy_heroes = enemies.to_vec();
+}
+
+/// One reading of the item panel: whose side the hero is on, and its six
+/// inventory items.
+#[derive(Debug, Clone, Default)]
+pub struct PanelRead {
+    pub side: Option<vision::items::Side>,
+    pub items: [Option<String>; 6],
+}
+
+/// Remembers the items read off the panel while you have another hero
+/// selected, per side, for one match.
+#[derive(Debug, Default)]
+pub struct PanelItems {
+    match_id: String,
+    /// Items seen and the clock of the last read: allies, then enemies.
+    seen: [(Vec<String>, Option<i64>); 2],
+}
+
+impl PanelItems {
+    /// Records a panel reading and fills the snapshot's panel item fields.
+    pub fn observe(&mut self, s: &mut GameSnapshot, read: Option<&PanelRead>) {
+        if self.match_id != s.match_id {
+            *self = Self {
+                match_id: s.match_id.clone(),
+                ..Default::default()
+            };
+        }
+        if let Some(read) = read
+            && let Some(side) = read.side
+        {
+            let items: Vec<&String> = read.items.iter().flatten().collect();
+            // The panel shows you unless its items differ from yours; your
+            // own bar can look red while you're dead.
+            let yours = items.iter().filter(|i| s.items.contains(i)).count();
+            if !items.is_empty() && yours * 2 < items.len() {
+                let (seen, at) = &mut self.seen[usize::from(side == vision::items::Side::Enemy)];
+                for item in items {
+                    if !seen.contains(item) {
+                        seen.push(item.clone());
+                    }
+                }
+                *at = Some(s.clock_time);
+            }
+        }
+        let age = |at: Option<i64>| at.map_or(-1, |at| (s.clock_time - at).max(0));
+        s.ally_items = self.seen[0].0.clone();
+        s.ally_items_age = age(self.seen[0].1);
+        s.enemy_items = self.seen[1].0.clone();
+        s.enemy_items_age = age(self.seen[1].1);
+    }
 }
 
 /// An ally icon this close to where GSI puts you is you.

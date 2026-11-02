@@ -9,6 +9,7 @@ use std::path::Path;
 
 use image::RgbImage;
 
+use crate::gallery::{Gallery, ThumbSize};
 use crate::topbar::{self, TopBar};
 
 /// The portrait inside a top-bar slot (at 1080p detail): below the player
@@ -16,12 +17,24 @@ use crate::topbar::{self, TopBar};
 const PORTRAIT_WIDTH: u32 = 60;
 const PORTRAIT_TOP: u32 = 4;
 const PORTRAIT_HEIGHT: u32 = 36;
-/// Portraits are compared as small thumbnails of this size.
-const THUMB_W: u32 = 24;
-const THUMB_H: u32 = 14;
-/// Rows of the thumbnail compared: the top part, above the marks drawn on
-/// your own hero's portrait.
-const THUMB_ROWS: u32 = 10;
+/// Portraits are compared by the top of their thumbnails, above the marks
+/// drawn on your own hero's portrait.
+const THUMB: ThumbSize = ThumbSize {
+    w: 24,
+    h: 14,
+    rows: 10,
+};
+/// The hero's face in the item panel (at 1080p detail), left of the stats,
+/// compared as a thumbnail with the middle of each portrait.
+const FACE_X: u32 = 112;
+const FACE_Y: u32 = 60;
+const FACE_W: u32 = 104;
+const FACE_H: u32 = 110;
+const FACE: ThumbSize = ThumbSize {
+    w: 12,
+    h: 12,
+    rows: 12,
+};
 /// Votes a slot needs, and the share of them its winner needs, before the
 /// lineup counts as read.
 const MIN_VOTES: u32 = 20;
@@ -34,64 +47,71 @@ pub struct Lineup {
     pub dire: [String; 5],
 }
 
-/// A portrait as a normalised colour thumbnail.
-type Thumb = Vec<f32>;
-
 /// The heroes to match against.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct References {
-    names: Vec<String>,
-    thumbs: Vec<Thumb>,
+    portraits: Gallery,
+    /// The middle of each portrait, to compare with the face in the item
+    /// panel.
+    faces: Gallery,
 }
 
 impl References {
     /// Loads every `<short name>.png` in `dir` (as `fetch-heroes` saves
     /// them), for example `phantom_assassin.png`.
     pub fn load(dir: &Path) -> anyhow::Result<Self> {
+        let portraits = Gallery::load(dir, "npc_dota_hero_", THUMB)?;
         let mut heroes = Vec::new();
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
-            if path.extension().is_none_or(|e| e != "png") {
-                continue;
+            if path.extension().is_some_and(|e| e == "png")
+                && let Some(short) = path.file_stem().and_then(|s| s.to_str())
+            {
+                heroes.push((
+                    format!("npc_dota_hero_{short}"),
+                    image::open(&path)?.into_rgb8(),
+                ));
             }
-            let Some(short) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            let image = image::open(&path)?.into_rgb8();
-            heroes.push((format!("npc_dota_hero_{short}"), image));
         }
-        anyhow::ensure!(!heroes.is_empty(), "no hero portraits in {}", dir.display());
-        Ok(Self::from_images(heroes))
+        Ok(Self::with_faces(portraits, heroes))
     }
 
     /// From (internal name, portrait) pairs.
     pub fn from_images(heroes: Vec<(String, RgbImage)>) -> Self {
-        let mut refs = Self::default();
-        for (name, image) in heroes {
-            refs.names.push(name);
-            refs.thumbs.push(thumb(&image));
+        Self::with_faces(Gallery::from_images(heroes.clone(), THUMB), heroes)
+    }
+
+    fn with_faces(portraits: Gallery, heroes: Vec<(String, RgbImage)>) -> Self {
+        let faces = heroes
+            .into_iter()
+            .map(|(name, image)| {
+                let (w, h) = image.dimensions();
+                let middle = image::imageops::crop_imm(&image, w / 4, 0, w / 2, h).to_image();
+                (name, middle)
+            })
+            .collect();
+        Self {
+            portraits,
+            faces: Gallery::from_images(faces, FACE),
         }
-        refs
     }
 
     pub fn len(&self) -> usize {
-        self.names.len()
+        self.portraits.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
+        self.portraits.len() == 0
     }
 
-    /// The closest hero to a portrait, and how far off it is.
-    fn best(&self, portrait: &RgbImage) -> Option<(usize, f32)> {
-        let t = thumb(portrait);
-        self.thumbs
-            .iter()
-            .map(|r| distance(&t, r))
-            .enumerate()
-            .min_by(|a, b| a.1.total_cmp(&b.1))
+    /// Which of `candidates` is the hero whose face is in an item-panel
+    /// crop at 1080p detail (the selected hero).
+    pub fn panel_hero<'a>(&self, panel: &RgbImage, candidates: &'a [String]) -> Option<&'a str> {
+        let face = image::imageops::crop_imm(panel, FACE_X, FACE_Y, FACE_W, FACE_H).to_image();
+        let (best, _) = self.faces.best_among(&face, candidates)?;
+        let name = self.faces.name(best);
+        candidates.iter().find(|c| *c == name).map(String::as_str)
     }
-
     /// The hero in each slot of one top-bar crop, `None` for dead heroes
     /// (their portraits are grey).
     pub fn read_frame(&self, image: &RgbImage, bar: &TopBar) -> [Option<&str>; 10] {
@@ -106,8 +126,8 @@ impl References {
             if dead[i] {
                 return None;
             }
-            let (best, _) = self.best(&portrait(&image, i))?;
-            Some(self.names[best].as_str())
+            let (best, _) = self.portraits.best(&portrait(&image, i))?;
+            Some(self.portraits.name(best))
         })
     }
 }
@@ -116,35 +136,6 @@ impl References {
 fn portrait(image: &RgbImage, i: usize) -> RgbImage {
     let x = topbar::slot_x(i < 5, i % 5);
     image::imageops::crop_imm(image, x, PORTRAIT_TOP, PORTRAIT_WIDTH, PORTRAIT_HEIGHT).to_image()
-}
-
-/// A small copy of a portrait, each channel shifted and scaled to mean 0
-/// and spread 1 so brightness and contrast differences don't matter.
-fn thumb(image: &RgbImage) -> Thumb {
-    let small = image::imageops::resize(
-        image,
-        THUMB_W,
-        THUMB_H,
-        image::imageops::FilterType::Triangle,
-    );
-    let mut out = Vec::with_capacity((THUMB_W * THUMB_ROWS * 3) as usize);
-    for c in 0..3 {
-        let values: Vec<f32> = (0..THUMB_ROWS)
-            .flat_map(|y| (0..THUMB_W).map(move |x| (x, y)))
-            .map(|(x, y)| f32::from(small.get_pixel(x, y).0[c]))
-            .collect();
-        let n = values.len() as f32;
-        let mean = values.iter().sum::<f32>() / n;
-        let spread = (values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / n)
-            .sqrt()
-            .max(1.0);
-        out.extend(values.iter().map(|v| (v - mean) / spread));
-    }
-    out
-}
-
-fn distance(a: &Thumb, b: &Thumb) -> f32 {
-    a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum()
 }
 
 /// Reads the lineup by voting over frames, for one match.
@@ -168,7 +159,7 @@ impl LineupReader {
             if slot.dead {
                 continue;
             }
-            if let Some((best, _)) = self.refs.best(&portrait(&image, i)) {
+            if let Some((best, _)) = self.refs.portraits.best(&portrait(&image, i)) {
                 self.votes[i][best] += 1;
             }
         }
@@ -181,7 +172,7 @@ impl LineupReader {
             let lead = self.votes[i].iter().enumerate().max_by_key(|&(_, &n)| n);
             match lead {
                 Some((hero, &n)) if n > 0 => (
-                    Some(self.refs.names[hero].as_str()),
+                    Some(self.refs.portraits.name(hero)),
                     n as f32 / total as f32,
                     total,
                 ),

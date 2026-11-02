@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 
 use image::RgbaImage;
 
+mod gallery;
 pub mod heroes;
+pub mod items;
 pub mod minimap;
 pub mod topbar;
 
@@ -72,6 +74,13 @@ impl DotaScreen {
         Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
     }
 
+    /// The ability and item panel, ready for [`items::Icons::inventory`].
+    pub fn panel(&self) -> anyhow::Result<image::RgbImage> {
+        let r = bottom_panel_area(self.width, self.height);
+        let part = self.monitor.capture_region(r.x, r.y, r.width, r.height)?;
+        Ok(image::DynamicImage::ImageRgba8(part).into_rgb8())
+    }
+
     /// The minimap, ready for [`minimap::Reader::read`].
     pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
         let r = minimap_area(self.width, self.height);
@@ -94,6 +103,10 @@ impl DotaScreen {
     }
 
     pub fn minimap(&self) -> anyhow::Result<image::RgbImage> {
+        anyhow::bail!("screen reading is only supported on Windows for now")
+    }
+
+    pub fn panel(&self) -> anyhow::Result<image::RgbImage> {
         anyhow::bail!("screen reading is only supported on Windows for now")
     }
 }

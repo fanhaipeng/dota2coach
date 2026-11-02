@@ -6,9 +6,10 @@ use clap::{Parser, Subcommand};
 use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
-    CoachConfig, DEFAULT_HEROES_DIR, MissingEnemies, Recording, apply_lineup, apply_minimap,
-    apply_top_bar, fetch_heroes, latest_recording, resolve_heroes_dir, resolve_rules_dir,
-    review_file, run_coach, steam,
+    CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, MissingEnemies, PanelItems, PanelRead,
+    Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes, fetch_items,
+    latest_recording, resolve_heroes_dir, resolve_items_dir, resolve_rules_dir, review_file,
+    run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -141,6 +142,12 @@ enum Cmd {
         #[arg(long, default_value = DEFAULT_HEROES_DIR)]
         dir: PathBuf,
     },
+    /// Download Valve's item icons, for reading the items of the hero you
+    /// select. They stay in DIR on this computer.
+    FetchItems {
+        #[arg(long, default_value = DEFAULT_ITEMS_DIR)]
+        dir: PathBuf,
+    },
     /// Print the GSI config file to put in Dota's gamestate_integration folder.
     GsiConfig {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -202,6 +209,10 @@ async fn main() -> anyhow::Result<()> {
             let saved = fetch_heroes(&dir).await?;
             println!("saved {saved} hero portraits to {}", dir.display());
         }
+        Cmd::FetchItems { dir } => {
+            let saved = fetch_items(&dir).await?;
+            println!("saved {saved} item icons to {}", dir.display());
+        }
         Cmd::GsiConfig { port, token } => {
             print!("{}", gsi::server::config_file(port, &token));
         }
@@ -239,9 +250,19 @@ async fn main() -> anyhow::Result<()> {
                         None
                     }
                 };
-                read_screen(clock_rx, screen_tx, heroes);
+                let icons = match resolve_items_dir(None) {
+                    Some(dir) => Some(vision::items::Icons::load(&dir)?),
+                    None => {
+                        info!(
+                            "run `dota2coach fetch-items` once to also read the items of heroes you select"
+                        );
+                        None
+                    }
+                };
+                read_screen(clock_rx, screen_tx, heroes, icons);
             }
             let mut missing = MissingEnemies::default();
+            let mut panel_items = PanelItems::default();
             let mut observe = |s: &mut GameSnapshot| {
                 clock_tx.send_replace(GameClock {
                     match_id: s.match_id.clone(),
@@ -256,6 +277,7 @@ async fn main() -> anyhow::Result<()> {
                     if let Some(lineup) = &read.lineup {
                         apply_lineup(s, lineup);
                     }
+                    panel_items.observe(s, read.panel.as_ref());
                     missing.observe(s);
                 }
             };
@@ -362,6 +384,8 @@ struct ScreenRead {
     map: vision::minimap::Minimap,
     /// Who is playing, once read.
     lineup: Option<vision::heroes::Lineup>,
+    /// The item panel, when item icons are available.
+    panel: Option<PanelRead>,
 }
 
 /// Reads the top bar and the minimap on its own thread while a match is
@@ -370,6 +394,7 @@ fn read_screen(
     clock: watch::Receiver<GameClock>,
     out: watch::Sender<Option<ScreenRead>>,
     heroes: Option<vision::heroes::References>,
+    icons: Option<vision::items::Icons>,
 ) {
     std::thread::spawn(move || {
         let mut screen: Option<DotaScreen> = None;
@@ -389,7 +414,13 @@ fn read_screen(
                 minimap = (now.match_id, vision::minimap::Reader::default());
                 lineup = (new_lineup(), None);
             }
-            let capture = |s: &DotaScreen| anyhow::Ok((s.top_bar()?, s.minimap()?));
+            let capture = |s: &DotaScreen| {
+                let panel = match icons {
+                    Some(_) => Some(s.panel()?),
+                    None => None,
+                };
+                anyhow::Ok((s.top_bar()?, s.minimap()?, panel))
+            };
             let read = match &screen {
                 Some(s) => capture(s),
                 None => DotaScreen::find().and_then(|s| {
@@ -399,7 +430,7 @@ fn read_screen(
                 }),
             };
             match read {
-                Ok((bar_image, map)) => {
+                Ok((bar_image, map, panel)) => {
                     failing = false;
                     let bar = vision::topbar::read(&bar_image);
                     if lineup.1.is_none()
@@ -416,6 +447,10 @@ fn read_screen(
                         bar,
                         map: minimap.1.read(&map),
                         lineup: lineup.1.clone(),
+                        panel: panel.zip(icons.as_ref()).map(|(image, icons)| PanelRead {
+                            side: vision::items::side(&image),
+                            items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
+                        }),
                     }));
                 }
                 Err(err) => {

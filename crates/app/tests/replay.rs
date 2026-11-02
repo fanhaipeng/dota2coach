@@ -579,3 +579,57 @@ fn suggests_counter_items_for_the_lineup() {
     );
     assert!(advise("pos1", &[], &[]).is_empty(), "lineup not read yet");
 }
+
+#[test]
+fn remembers_items_of_selected_heroes() {
+    use coach::GameSnapshot;
+    use dota2coach::{PanelItems, PanelRead};
+    use vision::items::Side;
+
+    let items = |names: &[&str]| -> [Option<String>; 6] {
+        std::array::from_fn(|i| names.get(i).map(|n| n.to_string()))
+    };
+    let mut panel = PanelItems::default();
+    let mut at = |clock, read: Option<PanelRead>| {
+        let mut s = GameSnapshot {
+            match_id: "1".into(),
+            clock_time: clock,
+            items: vec!["item_blink".into(), "item_tpscroll".into()],
+            ..Default::default()
+        };
+        panel.observe(&mut s, read.as_ref());
+        s
+    };
+    let s = at(100, None);
+    assert_eq!((s.enemy_items_age, s.ally_items_age), (-1, -1));
+
+    // Your own panel, even if its bar looks red while you're dead.
+    let s = at(
+        110,
+        Some(PanelRead {
+            side: Some(Side::Enemy),
+            items: items(&["item_blink"]),
+        }),
+    );
+    assert!(s.enemy_items.is_empty());
+
+    let s = at(
+        120,
+        Some(PanelRead {
+            side: Some(Side::Enemy),
+            items: items(&["item_desolator", "item_power_treads"]),
+        }),
+    );
+    assert_eq!(s.enemy_items, ["item_desolator", "item_power_treads"]);
+    assert_eq!(s.enemy_items_age, 0);
+
+    let s = at(
+        200,
+        Some(PanelRead {
+            side: Some(Side::Ally),
+            items: items(&["item_ward_dispenser"]),
+        }),
+    );
+    assert_eq!(s.ally_items, ["item_ward_dispenser"]);
+    assert_eq!(s.enemy_items_age, 80);
+}
