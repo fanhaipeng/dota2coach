@@ -5,10 +5,11 @@
 //   - Power runes: every 2 minutes from 6:00
 //   - Bounty runes: every 4 minutes (0:00, then 4:00, 8:00, ...)
 //   - Wisdom shrines: every 7 minutes from 7:00 (they replaced wisdom runes)
+//   - Healing lotus: every 3 minutes from 3:00, at the two lotus pools
 // Adjust the numbers here when a patch changes them; no recompiling needed.
 //
 // Only what you can use is said: water and power runes when you're near the
-// river spots they spawn at, bounty runes and wisdom shrines to supports (who
+// river spots they spawn at, the healing lotus when you're near its pool, bounty runes and wisdom shrines to supports (who
 // take them) and while your role isn't known yet.
 
 // Where water and power runes spawn: the top and bottom river spots, in world
@@ -21,6 +22,12 @@ fn near(s, x, y) {
 
 fn near_river_rune(s) {
     near(s, -1760, 1216) || near(s, 1168, -1200)
+}
+
+// The lotus pools near the top-left and bottom-right corners, measured on the
+// minimap (about 200 units off at most).
+fn near_lotus_pool(s) {
+    near(s, -7530, 4060) || near(s, 7530, -4550)
 }
 
 fn takes_side_runes(s) {
@@ -47,6 +54,9 @@ fn check(s) {
     let out = [];
     if !runes.is_empty() {
         out.push(#{ msg: "runes.soon", args: #{ runes: runes }, priority: 1, cooldown: 30 });
+    }
+    if near_lotus_pool(s) && soon(t, 180, 180) {
+        out.push(#{ msg: "lotus.soon", priority: 1, cooldown: 30 });
     }
     if takes_side_runes(s) && soon(t, 420, 420) {
         out.push(#{ msg: "wisdom.soon", priority: 1, cooldown: 30 });

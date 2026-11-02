@@ -760,4 +760,11 @@ fn reminds_of_runes_you_can_take() {
         said("pos4", far_jungle, 405),
         ["Wisdom shrines in 15 seconds."]
     );
+    // 5:45: a lotus at 6:00, and power runes too.
+    let lotus_pool = (-7000, 4000);
+    assert_eq!(
+        said("pos1", lotus_pool, 345),
+        ["A healing lotus in 15 seconds at the pool near you."]
+    );
+    assert_eq!(said("pos1", mid, 345), ["Power runes in 15 seconds."]);
 }

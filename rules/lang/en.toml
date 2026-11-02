@@ -33,6 +33,9 @@ pos3 = "offlaner, position 3"
 pos4 = "soft support, position 4"
 pos5 = "hard support, position 5"
 
+[lotus]
+soon = "A healing lotus in 15 seconds at the pool near you."
+
 [wisdom]
 soon = "Wisdom shrines in 15 seconds."
 
