@@ -3,15 +3,18 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use coach::Catalog;
+use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
-    CoachConfig, Recording, latest_recording, resolve_rules_dir, review_file, run_coach, steam,
+    CoachConfig, Recording, apply_top_bar, latest_recording, resolve_rules_dir, review_file,
+    run_coach, steam,
 };
 use gsi::record::{self, Recorder};
-use tokio::sync::mpsc;
-use tracing::info;
+use std::time::{Duration, Instant};
+use tokio::sync::{mpsc, watch};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+use vision::{DotaScreen, FrameSaver};
 use voice::{ConsoleSpeaker, Speaker, VoiceRequest};
 
 const DEFAULT_PORT: u16 = 3000;
@@ -70,6 +73,18 @@ enum Cmd {
         /// Don't record anything.
         #[arg(long, conflicts_with = "record")]
         no_record: bool,
+        /// Also save the minimap, the top bar, the item panel and a small copy
+        /// of the screen
+        /// every SECS seconds of game time (10 if no value is given) to
+        /// `<games>/frames/<match id>/`, for building screen reading. Windows
+        /// only.
+        #[arg(long, value_name = "SECS", num_args = 0..=1, default_missing_value = "10")]
+        frames: Option<i64>,
+        /// Read the top bar from the screen during the game (who is dead, and
+        /// for how long) for calls like "two enemies dead, take Roshan".
+        /// Windows only.
+        #[arg(long)]
+        screen: bool,
     },
     /// Review a recorded game: deaths, farm, items, unspent gold and advice.
     Review {
@@ -186,11 +201,39 @@ async fn main() -> anyhow::Result<()> {
             record,
             games,
             no_record,
+            frames,
+            screen,
         } => {
+            if (frames.is_some() || screen) && !cfg!(windows) {
+                anyhow::bail!("--frames and --screen only work on Windows for now");
+            }
             let recording = match &record {
                 Some(path) => Recording::File(Recorder::create(path).await?),
                 None if no_record => Recording::Off,
-                None => Recording::per_match(games),
+                None => Recording::per_match(games.clone()),
+            };
+            let (clock_tx, clock_rx) = watch::channel(GameClock::default());
+            if let Some(every) = frames {
+                let saver = FrameSaver::new(games.join("frames"), every);
+                info!(every, dir = %games.join("frames").display(), "saving screenshots");
+                tokio::spawn(save_frames(clock_rx.clone(), saver));
+            }
+            let (bar_tx, bar_rx) = watch::channel(None);
+            if screen {
+                info!("reading the top bar from the screen");
+                read_top_bar(clock_rx, bar_tx);
+            }
+            let mut observe = |s: &mut GameSnapshot| {
+                clock_tx.send_replace(GameClock {
+                    match_id: s.match_id.clone(),
+                    clock: s.clock_time,
+                    live: s.in_game && !s.paused,
+                });
+                if let Some((at, bar)) = *bar_rx.borrow()
+                    && at.elapsed() < SCREEN_FRESH
+                {
+                    apply_top_bar(s, &bar);
+                }
             };
             let (tx, rx) = mpsc::channel(256);
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -202,7 +245,7 @@ async fn main() -> anyhow::Result<()> {
             });
             let speaker = coach.speaker()?;
             tokio::select! {
-                result = run_coach(rx, coach.config(), speaker.as_ref(), recording, None) => {
+                result = run_coach(rx, coach.config(), speaker.as_ref(), recording, Some(&mut observe)) => {
                     result?;
                 }
                 _ = tokio::signal::ctrl_c() => info!("stopping"),
@@ -272,6 +315,92 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Where the game is, for the screenshot saver.
+#[derive(Debug, Clone, Default)]
+struct GameClock {
+    match_id: String,
+    clock: i64,
+    /// In a match and not paused.
+    live: bool,
+}
+
+/// How often the top bar is read during a game.
+const SCREEN_EVERY: Duration = Duration::from_millis(500);
+/// A top-bar reading older than this is ignored, for example after alt-tab.
+const SCREEN_FRESH: Duration = Duration::from_secs(2);
+
+/// Reads the top bar on its own thread while a match is live, publishing
+/// each reading with when it was taken.
+fn read_top_bar(
+    clock: watch::Receiver<GameClock>,
+    out: watch::Sender<Option<(Instant, vision::topbar::TopBar)>>,
+) {
+    std::thread::spawn(move || {
+        let mut screen: Option<DotaScreen> = None;
+        let mut failing = false;
+        while !out.is_closed() {
+            std::thread::sleep(SCREEN_EVERY);
+            if !clock.borrow().live {
+                continue;
+            }
+            let read = match &screen {
+                Some(s) => s.top_bar(),
+                None => DotaScreen::find().and_then(|s| {
+                    let bar = s.top_bar();
+                    screen = Some(s);
+                    bar
+                }),
+            };
+            match read {
+                Ok(image) => {
+                    failing = false;
+                    out.send_replace(Some((Instant::now(), vision::topbar::read(&image))));
+                }
+                Err(err) => {
+                    if !failing {
+                        warn!(%err, "couldn't read the top bar; is Dota in windowed or desktop-friendly fullscreen?");
+                    }
+                    failing = true;
+                    // The window may have moved to another monitor.
+                    screen = None;
+                }
+            }
+        }
+    });
+}
+
+/// Saves a screenshot whenever `saver` says one is due, until the coach stops.
+async fn save_frames(mut clock: watch::Receiver<GameClock>, mut saver: FrameSaver) {
+    let mut failing = false;
+    while clock.changed().await.is_ok() {
+        let now = clock.borrow_and_update().clone();
+        if !now.live {
+            continue;
+        }
+        let Some(path) = saver.due(&now.match_id, now.clock) else {
+            continue;
+        };
+        let saved = tokio::task::spawn_blocking(move || {
+            let image = vision::capture_dota()?;
+            vision::save_frame(&image, &path)?;
+            anyhow::Ok(path)
+        })
+        .await;
+        match saved {
+            Ok(Ok(path)) => {
+                failing = false;
+                tracing::debug!(path = %path.display(), "saved screenshot");
+            }
+            Ok(Err(err)) if !failing => {
+                failing = true;
+                warn!(%err, "couldn't save a screenshot; is Dota in windowed or desktop-friendly fullscreen?");
+            }
+            Ok(Err(_)) => {}
+            Err(err) => warn!(%err, "screenshot task failed"),
+        }
+    }
 }
 
 fn setup(dota_dir: Option<PathBuf>, port: u16, token: &str) -> anyhow::Result<()> {
