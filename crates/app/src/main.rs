@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand};
 use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
-    CoachConfig, Recording, apply_top_bar, latest_recording, resolve_rules_dir, review_file,
-    run_coach, steam,
+    CoachConfig, MissingEnemies, Recording, apply_minimap, apply_top_bar, latest_recording,
+    resolve_rules_dir, review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -218,21 +218,24 @@ async fn main() -> anyhow::Result<()> {
                 info!(every, dir = %games.join("frames").display(), "saving screenshots");
                 tokio::spawn(save_frames(clock_rx.clone(), saver));
             }
-            let (bar_tx, bar_rx) = watch::channel(None);
+            let (screen_tx, screen_rx) = watch::channel(None);
             if screen {
-                info!("reading the top bar from the screen");
-                read_top_bar(clock_rx, bar_tx);
+                info!("reading the top bar and the minimap from the screen");
+                read_screen(clock_rx, screen_tx);
             }
+            let mut missing = MissingEnemies::default();
             let mut observe = |s: &mut GameSnapshot| {
                 clock_tx.send_replace(GameClock {
                     match_id: s.match_id.clone(),
                     clock: s.clock_time,
                     live: s.in_game && !s.paused,
                 });
-                if let Some((at, bar)) = *bar_rx.borrow()
-                    && at.elapsed() < SCREEN_FRESH
+                if let Some(read) = &*screen_rx.borrow()
+                    && read.at.elapsed() < SCREEN_FRESH
                 {
-                    apply_top_bar(s, &bar);
+                    apply_top_bar(s, &read.bar);
+                    apply_minimap(s, &read.map);
+                    missing.observe(s);
                 }
             };
             let (tx, rx) = mpsc::channel(256);
@@ -326,41 +329,56 @@ struct GameClock {
     live: bool,
 }
 
-/// How often the top bar is read during a game.
+/// How often the screen is read during a game.
 const SCREEN_EVERY: Duration = Duration::from_millis(500);
-/// A top-bar reading older than this is ignored, for example after alt-tab.
+/// A screen reading older than this is ignored, for example after alt-tab.
 const SCREEN_FRESH: Duration = Duration::from_secs(2);
 
-/// Reads the top bar on its own thread while a match is live, publishing
-/// each reading with when it was taken.
-fn read_top_bar(
-    clock: watch::Receiver<GameClock>,
-    out: watch::Sender<Option<(Instant, vision::topbar::TopBar)>>,
-) {
+/// One reading of the screen.
+struct ScreenRead {
+    at: Instant,
+    bar: vision::topbar::TopBar,
+    map: vision::minimap::Minimap,
+}
+
+/// Reads the top bar and the minimap on its own thread while a match is
+/// live, publishing each reading with when it was taken.
+fn read_screen(clock: watch::Receiver<GameClock>, out: watch::Sender<Option<ScreenRead>>) {
     std::thread::spawn(move || {
         let mut screen: Option<DotaScreen> = None;
         let mut failing = false;
+        // The minimap reader learns where the buildings are, per match.
+        let mut minimap = (String::new(), vision::minimap::Reader::default());
         while !out.is_closed() {
             std::thread::sleep(SCREEN_EVERY);
-            if !clock.borrow().live {
+            let now = clock.borrow().clone();
+            if !now.live {
                 continue;
             }
+            if minimap.0 != now.match_id {
+                minimap = (now.match_id, vision::minimap::Reader::default());
+            }
+            let capture = |s: &DotaScreen| anyhow::Ok((s.top_bar()?, s.minimap()?));
             let read = match &screen {
-                Some(s) => s.top_bar(),
+                Some(s) => capture(s),
                 None => DotaScreen::find().and_then(|s| {
-                    let bar = s.top_bar();
+                    let images = capture(&s);
                     screen = Some(s);
-                    bar
+                    images
                 }),
             };
             match read {
-                Ok(image) => {
+                Ok((bar, map)) => {
                     failing = false;
-                    out.send_replace(Some((Instant::now(), vision::topbar::read(&image))));
+                    out.send_replace(Some(ScreenRead {
+                        at: Instant::now(),
+                        bar: vision::topbar::read(&bar),
+                        map: minimap.1.read(&map),
+                    }));
                 }
                 Err(err) => {
                     if !failing {
-                        warn!(%err, "couldn't read the top bar; is Dota in windowed or desktop-friendly fullscreen?");
+                        warn!(%err, "couldn't read the screen; is Dota in windowed or desktop-friendly fullscreen?");
                     }
                     failing = true;
                     // The window may have moved to another monitor.

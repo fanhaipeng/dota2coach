@@ -258,6 +258,10 @@ pub fn resolve_rules_dir(explicit: Option<&Path>) -> PathBuf {
         .unwrap_or(local)
 }
 
+/// An ally with this many seconds or fewer left to respawn doesn't count as
+/// dead.
+const ALLY_BACK_SOON: i64 = 5;
+
 /// Fills the snapshot's screen fields from a top-bar reading. Does nothing
 /// until GSI has said which team the player is on.
 pub fn apply_top_bar(s: &mut GameSnapshot, bar: &vision::topbar::TopBar) {
@@ -278,8 +282,82 @@ pub fn apply_top_bar(s: &mut GameSnapshot, bar: &vision::topbar::TopBar) {
     s.enemies_dead = dead(enemies);
     s.enemies_dead_long = long.len() as i64;
     s.dead_window = long.iter().copied().min().unwrap_or(0);
-    // The top bar shows you too; GSI knows whether you're alive.
-    s.allies_dead = (dead(allies) - i64::from(!s.alive)).max(0);
+    // Allies about to respawn are as good as alive.
+    let out = |slot: &&vision::topbar::Slot| {
+        slot.dead
+            && slot
+                .respawn
+                .is_none_or(|secs| i64::from(secs) > ALLY_BACK_SOON)
+    };
+    // The top bar shows you too; GSI knows whether you're dead (its timer is
+    // one less than the screen's).
+    let you = !s.alive && s.respawn_seconds + 1 > ALLY_BACK_SOON;
+    s.allies_dead = (allies.iter().filter(out).count() as i64 - i64::from(you)).max(0);
+}
+
+/// An ally icon this close to where GSI puts you is you.
+const YOU_RADIUS: f64 = 500.0;
+/// How long a seen enemy is remembered when counting the missing.
+const MISSING_WINDOW: i64 = 20;
+
+/// Fills the snapshot's minimap fields from a minimap reading, around your
+/// position from GSI.
+pub fn apply_minimap(s: &mut GameSnapshot, map: &vision::minimap::Minimap) {
+    use coach::snapshot::NEAR;
+
+    let you = vision::minimap::Point {
+        x: s.xpos,
+        y: s.ypos,
+    };
+    let enemies: Vec<f64> = map.enemies.iter().map(|e| e.distance(you)).collect();
+    let mut allies: Vec<f64> = map.allies.iter().map(|a| a.distance(you)).collect();
+    // Your own icon is the ally closest to you, if it's where GSI says.
+    allies.sort_by(f64::total_cmp);
+    if s.alive && allies.first().is_some_and(|&d| d < YOU_RADIUS) {
+        allies.remove(0);
+    }
+    s.screen = true;
+    s.enemies_seen = enemies.len() as i64;
+    s.nearest_enemy = enemies
+        .iter()
+        .copied()
+        .min_by(f64::total_cmp)
+        .map_or(-1, |d| d.round() as i64);
+    s.enemies_near = enemies.iter().filter(|&&d| d <= NEAR as f64).count() as i64;
+    s.allies_near = allies.iter().filter(|&&d| d <= NEAR as f64).count() as i64;
+}
+
+/// Counts enemies that dropped off the minimap without dying: the most seen
+/// alive in the last [`MISSING_WINDOW`] seconds, less those seen or dead now.
+#[derive(Debug, Default)]
+pub struct MissingEnemies {
+    /// (clock, enemies seen, enemies dead) for recent readings.
+    recent: std::collections::VecDeque<(i64, i64, i64)>,
+}
+
+impl MissingEnemies {
+    /// Sets `enemies_missing`; call after [`apply_top_bar`] and
+    /// [`apply_minimap`] for the same moment.
+    pub fn observe(&mut self, s: &mut GameSnapshot) {
+        while self
+            .recent
+            .front()
+            .is_some_and(|&(at, ..)| at > s.clock_time || s.clock_time - at > MISSING_WINDOW)
+        {
+            self.recent.pop_front();
+        }
+        self.recent
+            .push_back((s.clock_time, s.enemies_seen, s.enemies_dead));
+        // An enemy seen then and dead now isn't missing.
+        let accounted_now = s.enemies_seen + s.enemies_dead;
+        let peak = self
+            .recent
+            .iter()
+            .map(|&(_, seen, dead)| seen + dead.min(s.enemies_dead))
+            .max()
+            .unwrap_or(0);
+        s.enemies_missing = (peak - accounted_now).max(0);
+    }
 }
 
 #[cfg(test)]

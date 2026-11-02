@@ -307,6 +307,11 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemies_dead_long: (t / 30).rem_euclid(4),
                     dead_window: 30,
                     allies_dead: if t % 200 < 50 { 3 } else { 0 },
+                    // The minimap: an enemy near you now and then, and enemies
+                    // vanishing.
+                    enemies_seen: 2,
+                    enemies_near: if t % 90 < 30 { 2 } else { 0 },
+                    enemies_missing: if t % 300 < 60 { 4 } else { 0 },
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -424,6 +429,7 @@ fn reads_the_top_bar_from_the_players_side() {
     let mut s = GameSnapshot {
         team: "dire".into(),
         alive: false,
+        respawn_seconds: 29,
         ..Default::default()
     };
     apply_top_bar(&mut s, &bar);
@@ -446,7 +452,76 @@ fn reads_the_top_bar_from_the_players_side() {
     );
     assert_eq!(s.allies_dead, 4);
 
+    // Allies a few seconds from respawning don't count.
+    bar.radiant[1] = dead(5);
+    bar.radiant[2] = dead(1);
+    apply_top_bar(&mut s, &bar);
+    assert_eq!(s.allies_dead, 2, "45 seconds and no timer");
+
     let mut s = GameSnapshot::default();
     apply_top_bar(&mut s, &bar);
     assert!(!s.screen, "team not known yet");
+}
+
+#[test]
+fn reads_the_minimap_around_you() {
+    use coach::GameSnapshot;
+    use dota2coach::{MissingEnemies, apply_minimap};
+    use vision::minimap::{Minimap, Point};
+
+    let p = |x, y| Point { x, y };
+    let map = Minimap {
+        // You, a teammate 2000 away and one 1000 away.
+        allies: vec![p(-3010, -2990), p(-1000, -3000), p(-3000, -2000)],
+        enemies: vec![p(-2000, -3000), p(3000, 3000)],
+    };
+    let mut s = GameSnapshot {
+        alive: true,
+        xpos: -3000,
+        ypos: -3000,
+        ..Default::default()
+    };
+    apply_minimap(&mut s, &map);
+    assert!(s.screen);
+    assert_eq!(
+        (
+            s.enemies_seen,
+            s.nearest_enemy,
+            s.enemies_near,
+            s.allies_near
+        ),
+        (2, 1000, 1, 1)
+    );
+
+    let alone = Minimap {
+        allies: vec![p(-3000, -3000)],
+        enemies: vec![],
+    };
+    apply_minimap(&mut s, &alone);
+    assert_eq!(
+        (
+            s.enemies_seen,
+            s.nearest_enemy,
+            s.enemies_near,
+            s.allies_near
+        ),
+        (0, -1, 0, 0)
+    );
+
+    // Three enemies seen, then one dies and the other two drop off the map.
+    let mut missing = MissingEnemies::default();
+    let mut at = |clock, seen, dead| {
+        let mut s = GameSnapshot {
+            clock_time: clock,
+            enemies_seen: seen,
+            enemies_dead: dead,
+            ..Default::default()
+        };
+        missing.observe(&mut s);
+        s.enemies_missing
+    };
+    assert_eq!(at(600, 3, 0), 0);
+    assert_eq!(at(601, 2, 1), 0, "one died, two still seen");
+    assert_eq!(at(605, 0, 1), 2);
+    assert_eq!(at(630, 0, 1), 0, "too long ago to count");
 }

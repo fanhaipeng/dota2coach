@@ -112,7 +112,7 @@ it only listens on your own computer (`127.0.0.1`).
 
 | Command | What it does |
 |---|---|
-| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. `--frames` (Windows) also saves the minimap, the top bar, the ability and item panel and a small copy of the screen every 10 seconds of game time (`--frames 1` for every second) to `games/frames/` for the screen-reading work; they stay on your computer. `--screen` (Windows) reads the top hero bar during the game for calls like "2 enemies dead for 30 seconds, push a tower" and "3 teammates dead, play safe". |
+| `run` | Coach live. Options: `--lang zh` for Chinese; `--role pos3` to set your role instead of detecting it (`pos1` to `pos5`); `--voice "<name>"` to pick a voice; `--mute` to print advice instead of speaking. Each match is saved to `games/` for `review`; `--games DIR` changes the folder, `--record FILE` saves everything to one file and `--no-record` turns it off. `--frames` (Windows) also saves the minimap, the top bar, the ability and item panel and a small copy of the screen every 10 seconds of game time (`--frames 1` for every second) to `games/frames/` for the screen-reading work; they stay on your computer. `--screen` (Windows) reads the top hero bar and the minimap during the game for calls like "2 enemies dead for 30 seconds, push a tower", "3 teammates dead, play safe" and "2 enemies near you and no teammates around". |
 | `review [FILE]` | Review your latest game, or the recording given. `--lang zh` in Chinese, `--json` for the raw facts, `--role pos3` if the role was detected wrong, `--coach` for an optional write-up by Claude (uses your own API credit; needs `ANTHROPIC_API_KEY`; `--model` picks the Claude model). |
 | `replay FILE` | Coach a recorded game without Dota. `--speed 0` replays instantly, `--speed 5` at five times speed. |
 | `setup` | Find Dota and install the GSI config. `--dota-dir` if it isn't found. |
@@ -218,6 +218,6 @@ patch.
 
 1. GSI, predefined rules and voice on Windows, macOS and Linux (done).
 2. Post-game review: the facts (`review`, done), a coach's write-up by Claude (`review --coach`, done), then trends across games.
-3. Screen reading, Windows first: capture (`run --frames`, done), dead heroes on the top bar (`run --screen`, done), then enemies on the minimap. It only reads what is on your screen; it never sends input or reads game memory.
+3. Screen reading, Windows first: capture (`run --frames`, done), dead heroes on the top bar (`run --screen`, done), heroes on the minimap (`run --screen`, first version). It only reads what is on your screen; it never sends input or reads game memory.
 4. Live LLM advice triggered by game events.
 5. A small trained model, compared against the rules.
