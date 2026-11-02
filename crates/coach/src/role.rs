@@ -11,8 +11,11 @@
 //! - mostly the offlane is pos3, or pos4 for a support;
 //! - no lane most of the time (roaming, jungling) is pos4.
 //!
-//! It decides once per match, at 4:00 or as soon after as it has enough
-//! samples, and gives up at 6:00.
+//! It decides at 4:00 or as soon after as it has enough samples, and gives up
+//! at 6:00. Last hits alone are a weak sign of a support: in unranked games two
+//! players often fight over the same lane's farm. So a support guess made only
+//! from few last hits is checked again at 10:00, and changed to the lane's core
+//! role if the hero has farmed like a core by then.
 
 use crate::snapshot::GameSnapshot;
 
@@ -28,6 +31,10 @@ const MIN_SAMPLES: u32 = 20;
 const MIN_SHARE: f64 = 0.5;
 /// Cores have more last hits than this by 4:00; supports usually don't.
 const SUPPORT_MAX_LAST_HITS: i64 = 10;
+/// When a support guess made from last hits alone is checked again.
+const RECHECK_AT: i64 = 600;
+/// Last hits by [`RECHECK_AT`] that say the hero is farming like a core.
+const CORE_MIN_LAST_HITS: i64 = 30;
 
 const SUPPORT_ITEMS: &[&str] = &[
     "item_ward_observer",
@@ -104,14 +111,20 @@ pub struct RoleDetector {
     off: u32,
     elsewhere: u32,
     done: bool,
+    /// A support guess from few last hits, in this lane, to check again at
+    /// [`RECHECK_AT`].
+    recheck: Option<Lane>,
 }
 
 impl RoleDetector {
     /// Feeds one snapshot. Returns the detection once, when it is made; call
     /// [`reset`](Self::reset) when a new match starts.
     pub fn observe(&mut self, s: &GameSnapshot) -> Option<Detection> {
-        if self.done || !s.in_game {
+        if !s.in_game {
             return None;
+        }
+        if self.done {
+            return self.check_again(s);
         }
         if s.clock_time >= GIVE_UP_AT {
             self.done = true;
@@ -143,8 +156,11 @@ impl RoleDetector {
         .into_iter()
         .max_by_key(|(count, _)| *count)?;
         let lane = (f64::from(count) / f64::from(total) >= MIN_SHARE).then_some(lane);
-        let support =
-            s.last_hits <= SUPPORT_MAX_LAST_HITS || SUPPORT_ITEMS.iter().any(|i| s.has_item(i));
+        let support_items = SUPPORT_ITEMS.iter().any(|i| s.has_item(i));
+        let support = s.last_hits <= SUPPORT_MAX_LAST_HITS || support_items;
+        if support && !support_items && matches!(lane, Some(Lane::Safe | Lane::Off)) {
+            self.recheck = lane;
+        }
         let role = match (lane, support) {
             (Some(Lane::Mid), _) => "pos2",
             (Some(Lane::Safe), false) => "pos1",
@@ -155,6 +171,22 @@ impl RoleDetector {
         Some(Detection {
             role: role.to_owned(),
             lane,
+        })
+    }
+
+    /// The core role of the lane, if a support guess turned out to be a core
+    /// by [`RECHECK_AT`].
+    fn check_again(&mut self, s: &GameSnapshot) -> Option<Detection> {
+        let lane = self.recheck?;
+        if s.clock_time < RECHECK_AT {
+            return None;
+        }
+        self.recheck = None;
+        let core =
+            s.last_hits >= CORE_MIN_LAST_HITS && !SUPPORT_ITEMS.iter().any(|i| s.has_item(i));
+        core.then(|| Detection {
+            role: if lane == Lane::Safe { "pos1" } else { "pos3" }.to_owned(),
+            lane: Some(lane),
         })
     }
 
@@ -231,6 +263,56 @@ mod tests {
         assert_eq!(role(laning("dire", (4800, -6200), 20, &[])), "pos3");
         assert_eq!(role(laning("dire", (4800, -6200), 3, &[])), "pos4");
         assert_eq!(role(laning("dire", (1500, -3000), 3, &[])), "pos4");
+    }
+
+    /// A support guess from few last hits becomes the lane's core once the
+    /// hero farms like one; one with wards stays a support.
+    #[test]
+    fn checks_a_support_guess_again_at_ten_minutes() {
+        let run = |team: &str, pos: (i64, i64), items: &[&str], last_hits_at_10: i64| {
+            let mut detector = RoleDetector::default();
+            let mut said = Vec::new();
+            for t in 0..=RECHECK_AT + 5 {
+                let s = GameSnapshot {
+                    in_game: true,
+                    clock_time: t,
+                    alive: true,
+                    team: team.into(),
+                    xpos: pos.0,
+                    ypos: pos.1,
+                    last_hits: if t < RECHECK_AT { 6 } else { last_hits_at_10 },
+                    items: items.iter().map(|i| (*i).to_owned()).collect(),
+                    ..Default::default()
+                };
+                if let Some(d) = detector.observe(&s) {
+                    said.push((t, d.role));
+                }
+            }
+            said
+        };
+        let safe = (4800, -6200);
+        assert_eq!(
+            run("radiant", safe, &[], 45),
+            [
+                (DECIDE_AT, "pos5".to_owned()),
+                (RECHECK_AT, "pos1".to_owned())
+            ]
+        );
+        assert_eq!(
+            run("dire", safe, &[], 45),
+            [
+                (DECIDE_AT, "pos4".to_owned()),
+                (RECHECK_AT, "pos3".to_owned())
+            ]
+        );
+        assert_eq!(
+            run("radiant", safe, &[], 12),
+            [(DECIDE_AT, "pos5".to_owned())]
+        );
+        assert_eq!(
+            run("radiant", safe, &["item_ward_sentry"], 45),
+            [(DECIDE_AT, "pos5".to_owned())]
+        );
     }
 
     #[test]
