@@ -8,8 +8,8 @@ use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
     CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, HeroNames, MissingEnemies, PanelItems,
     PanelNamer, PanelRead, Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes,
-    fetch_items, latest_recording, resolve_heroes_dir, resolve_items_dir, resolve_rules_dir,
-    review_file, run_coach, steam,
+    fetch_items, latest_recording, panel_candidates, resolve_heroes_dir, resolve_items_dir,
+    resolve_rules_dir, review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -282,6 +282,7 @@ async fn main() -> anyhow::Result<()> {
                         apply_lineup(s, lineup);
                     }
                     panel_items.observe(s, read.panel.as_ref());
+                    s.quickbuy_set = read.quickbuy;
                     missing.observe(s);
                 }
             };
@@ -390,6 +391,8 @@ struct ScreenRead {
     lineup: Option<vision::heroes::Lineup>,
     /// The item panel, when item icons are available.
     panel: Option<PanelRead>,
+    /// An item is queued for quick-buy.
+    quickbuy: bool,
 }
 
 /// Reads the top bar and the minimap on its own thread while a match is
@@ -406,6 +409,7 @@ fn read_screen(
         // The minimap reader learns where the buildings are, per match.
         let mut minimap = (String::new(), vision::minimap::Reader::default());
         // The lineup is read by voting over frames until it's sure, per match.
+        let all_heroes: Vec<String> = heroes.iter().flat_map(|h| h.names().to_vec()).collect();
         let new_lineup = || heroes.clone().map(vision::heroes::LineupReader::new);
         let mut lineup = (new_lineup(), None);
         while !out.is_closed() {
@@ -423,7 +427,7 @@ fn read_screen(
                     Some(_) => Some(s.panel()?),
                     None => None,
                 };
-                anyhow::Ok((s.top_bar()?, s.minimap()?, panel))
+                anyhow::Ok((s.top_bar()?, s.minimap()?, panel, s.quickbuy()?))
             };
             let read = match &screen {
                 Some(s) => capture(s),
@@ -434,7 +438,7 @@ fn read_screen(
                 }),
             };
             match read {
-                Ok((bar_image, map, panel)) => {
+                Ok((bar_image, map, panel, quickbuy)) => {
                     failing = false;
                     let bar = vision::topbar::read(&bar_image);
                     if lineup.1.is_none()
@@ -451,14 +455,11 @@ fn read_screen(
                         bar,
                         map: minimap.1.read(&map),
                         lineup: lineup.1.clone(),
+                        quickbuy: vision::quickbuy_set(&quickbuy),
                         panel: panel
                             .zip(panel_reader.as_mut())
                             .map(|(image, (icons, namer))| {
-                                let candidates: Vec<String> = lineup
-                                    .1
-                                    .iter()
-                                    .flat_map(|l| l.radiant.iter().chain(&l.dire).cloned())
-                                    .collect();
+                                let candidates = panel_candidates(lineup.1.as_ref(), &all_heroes);
                                 PanelRead {
                                     side: vision::items::side(&image),
                                     hero: namer.name(&image, &candidates),

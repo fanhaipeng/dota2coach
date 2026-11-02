@@ -40,7 +40,8 @@ const FACE: ThumbSize = ThumbSize {
 const MIN_VOTES: u32 = 20;
 const MIN_SHARE: f32 = 0.6;
 
-/// Internal hero names, for example `npc_dota_hero_phantom_assassin`.
+/// Internal hero names, for example `npc_dota_hero_phantom_assassin`, empty
+/// for a hero that couldn't be told.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Lineup {
     pub radiant: [String; 5],
@@ -104,6 +105,11 @@ impl References {
         self.portraits.len() == 0
     }
 
+    /// Every hero's internal name.
+    pub fn names(&self) -> &[String] {
+        self.portraits.names()
+    }
+
     /// Which of `candidates` is the hero whose face is in an item-panel
     /// crop at 1080p detail (the selected hero).
     pub fn panel_hero<'a>(&self, panel: &RgbImage, candidates: &'a [String]) -> Option<&'a str> {
@@ -112,6 +118,20 @@ impl References {
         let name = self.faces.name(best);
         candidates.iter().find(|c| *c == name).map(String::as_str)
     }
+    /// The closest hero to each slot's portrait and how far off it is, for
+    /// tuning.
+    #[doc(hidden)]
+    pub fn scores(&self, image: &RgbImage) -> [(String, f32); 10] {
+        let image = topbar::at_detail(image);
+        std::array::from_fn(|i| {
+            let (best, d) = self
+                .portraits
+                .best(&portrait(&image, i))
+                .unwrap_or((0, f32::MAX));
+            (self.portraits.name(best).to_owned(), d)
+        })
+    }
+
     /// The hero in each slot of one top-bar crop, `None` for dead heroes
     /// (their portraits are grey).
     pub fn read_frame(&self, image: &RgbImage, bar: &TopBar) -> [Option<&str>; 10] {
@@ -142,14 +162,21 @@ fn portrait(image: &RgbImage, i: usize) -> RgbImage {
 #[derive(Debug, Clone)]
 pub struct LineupReader {
     refs: References,
-    /// For each slot, votes per hero (by index into `refs`).
+    /// For each slot, votes per hero (by index into `refs`), and the sum of
+    /// how far off each vote's match was.
     votes: Vec<Vec<u32>>,
+    distances: Vec<Vec<f32>>,
 }
 
 impl LineupReader {
     pub fn new(refs: References) -> Self {
         let votes = vec![vec![0; refs.len()]; 10];
-        Self { refs, votes }
+        let distances = vec![vec![0.0; refs.len()]; 10];
+        Self {
+            refs,
+            votes,
+            distances,
+        }
     }
 
     /// Adds one frame's votes.
@@ -159,8 +186,9 @@ impl LineupReader {
             if slot.dead {
                 continue;
             }
-            if let Some((best, _)) = self.refs.portraits.best(&portrait(&image, i)) {
+            if let Some((best, d)) = self.refs.portraits.best(&portrait(&image, i)) {
                 self.votes[i][best] += 1;
+                self.distances[i][best] += d;
             }
         }
     }
@@ -181,7 +209,10 @@ impl LineupReader {
         })
     }
 
-    /// The lineup, once every slot has a clear winner.
+    /// The lineup, once every slot has a clear winner. A hero can only play
+    /// once, so if two slots read as the same hero, the closer match keeps it
+    /// and the other is left empty: a hero missing from the portraits folder
+    /// (newer than it) reads as whoever looks most alike.
     pub fn lineup(&self) -> Option<Lineup> {
         let leaders = self.leaders();
         let mut names = Vec::with_capacity(10);
@@ -190,6 +221,21 @@ impl LineupReader {
                 return None;
             }
             names.push(name?.to_owned());
+        }
+        let closeness = |slot: usize| {
+            let (hero, &n) = self.votes[slot]
+                .iter()
+                .enumerate()
+                .max_by_key(|&(_, &n)| n)?;
+            Some(self.distances[slot][hero] / n.max(1) as f32)
+        };
+        for a in 0..10 {
+            for b in a + 1..10 {
+                if !names[a].is_empty() && names[a] == names[b] {
+                    let worse = if closeness(a) <= closeness(b) { b } else { a };
+                    names[worse].clear();
+                }
+            }
         }
         let dire = names.split_off(5);
         Some(Lineup {

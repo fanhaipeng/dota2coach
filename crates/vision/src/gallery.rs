@@ -62,6 +62,10 @@ impl Gallery {
         self.names.len()
     }
 
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
     pub fn name(&self, i: usize) -> &str {
         &self.names[i]
     }

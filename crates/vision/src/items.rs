@@ -184,35 +184,44 @@ const NAME_Y: u32 = 26;
 const NAME_W: u32 = 160;
 const NAME_H: u32 = 24;
 const NAME_ZOOM: u32 = 4;
+/// White space around the letters, which text recognition needs.
+const NAME_BORDER: u32 = 40;
 
 /// The selected hero's name from a panel crop, enlarged for
-/// [`crate::ocr::read_text`]: as it looks, and with only its letters kept,
-/// black on white (your own name is gold, others' white). The world shows
-/// through behind the name, so any of them can read best.
+/// [`crate::ocr::read_text`]: as it looks, and with only its letters kept
+/// (your own name is gold, others' white), black on a white border, at two
+/// sizes. The world shows through behind the name, and short names need room
+/// around them, so any of them can read best.
 pub fn name_pictures(panel: &RgbImage) -> [RgbImage; 3] {
     let panel = at_detail(panel);
     let strip = image::imageops::crop_imm(&*panel, NAME_X, NAME_Y, NAME_W, NAME_H).to_image();
-    let big = image::imageops::resize(
-        &strip,
-        NAME_W * NAME_ZOOM,
-        NAME_H * NAME_ZOOM,
-        image::imageops::FilterType::CatmullRom,
-    );
-    let keep = |letter: fn(i32, i32, i32) -> bool| {
-        RgbImage::from_fn(big.width(), big.height(), |x, y| {
-            let [r, g, b] = big.get_pixel(x, y).0.map(i32::from);
-            image::Rgb(if letter(r, g, b) {
-                [0, 0, 0]
-            } else {
-                [255, 255, 255]
-            })
-        })
+    let zoom = |z: u32| {
+        image::imageops::resize(
+            &strip,
+            NAME_W * z,
+            NAME_H * z,
+            image::imageops::FilterType::CatmullRom,
+        )
     };
-    let gold = keep(|r, g, b| r > 170 && g > 130 && b < 140 && r - b > 60);
-    let white = keep(|r, g, b| r.min(g).min(b) > 175 && r.max(g).max(b) - r.min(g).min(b) < 40);
-    [big, gold, white]
+    let letters = |z: u32| {
+        let big = zoom(z);
+        let mut out = RgbImage::from_pixel(
+            big.width() + 2 * NAME_BORDER,
+            big.height() + 2 * NAME_BORDER,
+            image::Rgb([255, 255, 255]),
+        );
+        for (x, y, p) in big.enumerate_pixels() {
+            let [r, g, b] = p.0.map(i32::from);
+            let gold = r > 150 && g > 110 && b < 150 && r - b > 50;
+            let white = r.min(g).min(b) > 170 && r.max(g).max(b) - r.min(g).min(b) < 45;
+            if gold || white {
+                out.put_pixel(x + NAME_BORDER, y + NAME_BORDER, image::Rgb([0, 0, 0]));
+            }
+        }
+        out
+    };
+    [zoom(NAME_ZOOM), letters(3), letters(6)]
 }
-
 /// The spread of brightness across a picture.
 fn busyness(image: &RgbImage) -> f32 {
     let values: Vec<f32> = image

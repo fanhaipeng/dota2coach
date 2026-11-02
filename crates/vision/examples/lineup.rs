@@ -83,6 +83,26 @@ fn main() -> anyhow::Result<()> {
             share * 100.0
         );
     }
+    if let Some(l) = reader.lineup() {
+        let short = |h: &String| h.trim_start_matches("npc_dota_hero_").to_owned();
+        let side = |s: &[String; 5]| {
+            s.iter()
+                .map(|h| {
+                    if h.is_empty() {
+                        "?".to_owned()
+                    } else {
+                        short(h)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        println!(
+            "lineup: Radiant {} | Dire {}",
+            side(&l.radiant),
+            side(&l.dire)
+        );
+    }
     Ok(())
 }
 

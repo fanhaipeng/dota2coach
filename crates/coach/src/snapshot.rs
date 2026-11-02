@@ -123,6 +123,9 @@ pub struct GameSnapshot {
     /// [`STALE_ITEMS`] seconds (or never, after that much game time). Empty
     /// until the lineup is known.
     pub stale_enemy: String,
+    /// An item is queued in the quick-buy tray (`run --screen`), so spare
+    /// gold is already going somewhere.
+    pub quickbuy_set: bool,
 }
 
 /// Enemy items older than this, in game seconds, are worth reading again.

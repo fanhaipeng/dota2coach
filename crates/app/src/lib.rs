@@ -399,8 +399,9 @@ pub fn apply_lineup(s: &mut GameSnapshot, lineup: &vision::heroes::Lineup) {
         "dire" => (&lineup.dire, &lineup.radiant),
         _ => return,
     };
-    s.ally_heroes = allies.to_vec();
-    s.enemy_heroes = enemies.to_vec();
+    let known = |heroes: &[String]| heroes.iter().filter(|h| !h.is_empty()).cloned().collect();
+    s.ally_heroes = known(allies);
+    s.enemy_heroes = known(enemies);
 }
 
 /// One reading of the item panel: whose side the hero is on, who it is if
@@ -422,6 +423,9 @@ pub struct PanelItems {
     seen: [(Vec<String>, Option<i64>); 2],
     /// Each named hero's items at its last read, and when.
     heroes: BTreeMap<String, (Vec<String>, i64)>,
+    /// Heroes the lineup couldn't tell (an alternative portrait) but whose
+    /// name was read in the panel: allies, then enemies.
+    found: [Vec<String>; 2],
 }
 
 impl PanelItems {
@@ -459,6 +463,21 @@ impl PanelItems {
                 if let Some(hero) = &read.hero {
                     let items = items.into_iter().cloned().collect();
                     self.heroes.insert(hero.clone(), (items, s.clock_time));
+                    let side = usize::from(side == vision::items::Side::Enemy);
+                    let known = s.ally_heroes.contains(hero) || s.enemy_heroes.contains(hero);
+                    if !known && !self.found[side].contains(hero) {
+                        self.found[side].push(hero.clone());
+                    }
+                }
+            }
+        }
+        for (heroes, found) in [
+            (&mut s.ally_heroes, &self.found[0]),
+            (&mut s.enemy_heroes, &self.found[1]),
+        ] {
+            for hero in found {
+                if !heroes.contains(hero) && heroes.len() < 5 {
+                    heroes.push(hero.clone());
                 }
             }
         }
@@ -492,6 +511,25 @@ impl PanelItems {
         };
     }
 }
+/// The heroes the selected hero's name is matched against: the lineup, plus
+/// every hero not in it while a slot is unknown (an alternative portrait the
+/// lineup couldn't place).
+pub fn panel_candidates(lineup: Option<&vision::heroes::Lineup>, all: &[String]) -> Vec<String> {
+    let Some(lineup) = lineup else {
+        return Vec::new();
+    };
+    let placed: Vec<&String> = lineup.radiant.iter().chain(&lineup.dire).collect();
+    let mut candidates: Vec<String> = placed
+        .iter()
+        .filter(|h| !h.is_empty())
+        .map(|h| h.to_string())
+        .collect();
+    if placed.iter().any(|h| h.is_empty()) {
+        candidates.extend(all.iter().filter(|h| !placed.contains(h)).cloned());
+    }
+    candidates
+}
+
 /// Hero names in every language of the rules folder (its `[hero]` tables),
 /// for recognising the name written above the selected hero's face whatever
 /// language Dota is set to.
@@ -568,16 +606,16 @@ impl PanelNamer {
 
     /// The selected hero, out of `candidates` (the lineup).
     pub fn name(&mut self, panel: &image::RgbImage, candidates: &[String]) -> Option<String> {
-        let [plain, gold, white] = vision::items::name_pictures(panel);
+        let [plain, small, large] = vision::items::name_pictures(panel);
         if let Some((letters, hero)) = &self.last
-            && differing(&letters[0], &gold) < SAME_LETTERS
-            && differing(&letters[1], &white) < SAME_LETTERS
+            && differing(&letters[0], &small) < SAME_LETTERS
+            && differing(&letters[1], &large) < SAME_LETTERS
         {
             return hero.clone();
         }
         let mut texts = Vec::new();
         for lang in &self.languages {
-            for picture in [&plain, &gold, &white] {
+            for picture in [&plain, &small, &large] {
                 if let Ok(text) = vision::ocr::read_text(picture, lang)
                     && !text.trim().is_empty()
                 {
@@ -586,7 +624,7 @@ impl PanelNamer {
             }
         }
         let hero = self.names.identify(&texts, candidates).map(str::to_owned);
-        self.last = Some(([gold, white], hero.clone()));
+        self.last = Some(([small, large], hero.clone()));
         hero
     }
 }

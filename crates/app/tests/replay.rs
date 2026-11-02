@@ -768,3 +768,53 @@ fn reminds_of_runes_you_can_take() {
     );
     assert_eq!(said("pos1", mid, 345), ["Power runes in 15 seconds."]);
 }
+
+#[test]
+fn learns_a_hero_the_lineup_missed_from_its_name() {
+    use coach::GameSnapshot;
+    use dota2coach::{PanelItems, PanelRead, panel_candidates};
+    use vision::heroes::Lineup;
+    use vision::items::Side;
+
+    let h = |s: &str| format!("npc_dota_hero_{s}");
+    // Anti-Mage with an alternative portrait: the lineup leaves the slot empty.
+    let lineup = Lineup {
+        radiant: [
+            h("clinkz"),
+            String::new(),
+            h("ringmaster"),
+            h("kunkka"),
+            h("sniper"),
+        ],
+        dire: [
+            h("ogre_magi"),
+            h("sven"),
+            h("necrolyte"),
+            h("wisp"),
+            h("juggernaut"),
+        ],
+    };
+    let all = vec![h("antimage"), h("clinkz"), h("axe")];
+    let candidates = panel_candidates(Some(&lineup), &all);
+    assert!(candidates.contains(&h("antimage")) && candidates.contains(&h("axe")));
+    assert_eq!(candidates.iter().filter(|c| **c == h("clinkz")).count(), 1);
+
+    let mut panel = PanelItems::default();
+    let mut s = GameSnapshot {
+        match_id: "1".into(),
+        team: "radiant".into(),
+        hero: "sniper".into(),
+        clock_time: 900,
+        ..Default::default()
+    };
+    dota2coach::apply_lineup(&mut s, &lineup);
+    assert_eq!(s.ally_heroes.len(), 4);
+    let read = PanelRead {
+        side: Some(Side::Ally),
+        hero: Some(h("antimage")),
+        items: std::array::from_fn(|i| (i == 0).then(|| "item_bfury".to_owned())),
+    };
+    panel.observe(&mut s, Some(&read));
+    assert!(s.ally_heroes.contains(&h("antimage")));
+    assert_eq!(s.hero_items[&h("antimage")], ["item_bfury"]);
+}
