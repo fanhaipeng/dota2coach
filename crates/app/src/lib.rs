@@ -513,23 +513,31 @@ impl PanelItems {
         };
     }
 }
-/// The heroes the selected hero's name is matched against: the lineup, plus
-/// every hero not in it while a slot is unknown (an alternative portrait the
-/// lineup couldn't place).
-pub fn panel_candidates(lineup: Option<&vision::heroes::Lineup>, all: &[String]) -> Vec<String> {
+/// The heroes the selected hero's name is matched against: the lineup, and
+/// while a slot is unknown (an alternative portrait the lineup couldn't place)
+/// every hero not in it, matched more strictly.
+pub fn panel_candidates(
+    lineup: Option<&vision::heroes::Lineup>,
+    all: &[String],
+) -> (Vec<String>, Vec<String>) {
     let Some(lineup) = lineup else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let placed: Vec<&String> = lineup.radiant.iter().chain(&lineup.dire).collect();
-    let mut candidates: Vec<String> = placed
+    let candidates: Vec<String> = placed
         .iter()
         .filter(|h| !h.is_empty())
         .map(|h| h.to_string())
         .collect();
-    if placed.iter().any(|h| h.is_empty()) {
-        candidates.extend(all.iter().filter(|h| !placed.contains(h)).cloned());
-    }
-    candidates
+    let outsiders = if placed.iter().any(|h| h.is_empty()) {
+        all.iter()
+            .filter(|h| !placed.contains(h))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    (candidates, outsiders)
 }
 
 /// Hero names in every language of the rules folder (its `[hero]` tables),
@@ -542,6 +550,9 @@ pub struct HeroNames {
 /// A name must match at least this well (0 to 1), and better than the next
 /// hero by this much, to count.
 const MIN_NAME_MATCH: f64 = 0.5;
+/// A hero outside the lineup (filling a slot it couldn't tell) must match
+/// this well: any of a hundred names can half-match a misread.
+const MIN_OUTSIDER_MATCH: f64 = 0.8;
 const MIN_NAME_LEAD: f64 = 0.15;
 
 impl HeroNames {
@@ -565,6 +576,27 @@ impl HeroNames {
     /// Which of `candidates` (internal names) the recognised `texts` name,
     /// if one stands out.
     pub fn identify<'a>(&self, texts: &[String], candidates: &'a [String]) -> Option<&'a str> {
+        self.identify_at(texts, candidates, MIN_NAME_MATCH)
+    }
+
+    /// Like [`identify`](Self::identify), first among the `lineup`, then
+    /// among `outsiders` with a stricter match.
+    pub fn identify_in<'a>(
+        &self,
+        texts: &[String],
+        lineup: &'a [String],
+        outsiders: &'a [String],
+    ) -> Option<&'a str> {
+        self.identify_at(texts, lineup, MIN_NAME_MATCH)
+            .or_else(|| self.identify_at(texts, outsiders, MIN_OUTSIDER_MATCH))
+    }
+
+    fn identify_at<'a>(
+        &self,
+        texts: &[String],
+        candidates: &'a [String],
+        min: f64,
+    ) -> Option<&'a str> {
         let mut scores: Vec<(f64, &str)> = candidates
             .iter()
             .map(|hero| {
@@ -579,7 +611,7 @@ impl HeroNames {
         scores.sort_by(|a, b| b.0.total_cmp(&a.0));
         let (best, hero) = *scores.first()?;
         let second = scores.get(1).map_or(0.0, |s| s.0);
-        (best >= MIN_NAME_MATCH && best - second >= MIN_NAME_LEAD).then_some(hero)
+        (best >= min && best - second >= MIN_NAME_LEAD).then_some(hero)
     }
 }
 
@@ -606,8 +638,13 @@ impl PanelNamer {
         }
     }
 
-    /// The selected hero, out of `candidates` (the lineup).
-    pub fn name(&mut self, panel: &image::RgbImage, candidates: &[String]) -> Option<String> {
+    /// The selected hero, out of the lineup or, more strictly, `outsiders`.
+    pub fn name(
+        &mut self,
+        panel: &image::RgbImage,
+        lineup: &[String],
+        outsiders: &[String],
+    ) -> Option<String> {
         let pictures = vision::items::name_pictures(panel);
         if let Some((letters, hero)) = &self.last
             && differing(&letters[0], &pictures[1]) < SAME_LETTERS
@@ -625,7 +662,10 @@ impl PanelNamer {
                 }
             }
         }
-        let hero = self.names.identify(&texts, candidates).map(str::to_owned);
+        let hero = self
+            .names
+            .identify_in(&texts, lineup, outsiders)
+            .map(str::to_owned);
         let [_, small, _, large, ..] = pictures;
         self.last = Some(([small, large], hero.clone()));
         hero

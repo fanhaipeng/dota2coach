@@ -459,10 +459,11 @@ fn read_screen(
                         panel: panel
                             .zip(panel_reader.as_mut())
                             .map(|(image, (icons, namer))| {
-                                let candidates = panel_candidates(lineup.1.as_ref(), &all_heroes);
+                                let (known, outsiders) =
+                                    panel_candidates(lineup.1.as_ref(), &all_heroes);
                                 PanelRead {
                                     side: vision::items::side(&image),
-                                    hero: namer.name(&image, &candidates),
+                                    hero: namer.name(&image, &known, &outsiders),
                                     items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
                                 }
                             }),

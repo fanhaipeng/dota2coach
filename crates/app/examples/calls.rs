@@ -206,10 +206,12 @@ fn read_frames(dir: &std::path::Path) -> BTreeMap<i64, Frame> {
         let panel = match (open("items"), &icons) {
             (Some(image), Some(icons)) => {
                 let image = image.into_rgb8();
-                let candidates = dota2coach::panel_candidates(lineup.as_ref(), &all_heroes);
+                let (known, outsiders) = dota2coach::panel_candidates(lineup.as_ref(), &all_heroes);
                 Some(PanelRead {
                     side: vision::items::side(&image),
-                    hero: namer.as_mut().and_then(|n| n.name(&image, &candidates)),
+                    hero: namer
+                        .as_mut()
+                        .and_then(|n| n.name(&image, &known, &outsiders)),
                     items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
                 })
             }

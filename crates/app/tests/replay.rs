@@ -795,9 +795,9 @@ fn learns_a_hero_the_lineup_missed_from_its_name() {
         ],
     };
     let all = vec![h("antimage"), h("clinkz"), h("axe")];
-    let candidates = panel_candidates(Some(&lineup), &all);
-    assert!(candidates.contains(&h("antimage")) && candidates.contains(&h("axe")));
-    assert_eq!(candidates.iter().filter(|c| **c == h("clinkz")).count(), 1);
+    let (known, outsiders) = panel_candidates(Some(&lineup), &all);
+    assert!(known.contains(&h("clinkz")) && !known.contains(&h("antimage")));
+    assert_eq!(outsiders, [h("antimage"), h("axe")]);
 
     let mut panel = PanelItems::default();
     let mut s = GameSnapshot {
