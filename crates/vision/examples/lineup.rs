@@ -45,7 +45,8 @@ fn main() -> anyhow::Result<()> {
     let (mut checked, mut right) = (0, 0);
     let mut sure_at = None;
     for &clock in &clocks {
-        let image = image::open(frames.join(format!("{clock:05}-topbar.jpg")))?.into_rgb8();
+        let image =
+            normalise(image::open(frames.join(format!("{clock:05}-topbar.jpg")))?.into_rgb8());
         let bar = vision::topbar::read(&image);
         // Your own slot, every frame of the match.
         if let Some((name, slot)) = &you
@@ -83,6 +84,26 @@ fn main() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+/// Frames saved before the crops were tightened hold the top bar at full
+/// detail inside a wider band (1.3 by 0.09 of the screen height). Cut the
+/// current crop out of those and scale it to 1080p detail.
+fn normalise(image: image::RgbImage) -> image::RgbImage {
+    let (w, h) = image.dimensions();
+    if w * 100 / h <= 1350 {
+        return image;
+    }
+    let screen = w * 10 / 13;
+    let area = vision::top_bar_area(screen * 16 / 9, screen);
+    let x = (w - area.width) / 2;
+    let part = image::imageops::crop_imm(&image, x, 0, area.width, area.height).to_image();
+    image::imageops::resize(
+        &part,
+        vision::topbar::WIDTH,
+        vision::topbar::HEIGHT,
+        image::imageops::FilterType::CatmullRom,
+    )
 }
 
 fn find_recording(frames: &Path, match_id: &str) -> Option<PathBuf> {
