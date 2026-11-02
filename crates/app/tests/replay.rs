@@ -292,7 +292,7 @@ fn every_role_rule_fires_in_a_bad_game() {
                     in_game: true,
                     clock_time: t,
                     role: role.clone(),
-                    alive: true,
+                    alive: t % 400 < 380,
                     health_percent: if t % 100 < 50 { 100 } else { 20 },
                     gold: 2500,
                     deaths: 5,
@@ -316,6 +316,8 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemy_heroes: ["riki", "lion", "lina", "zuus", "huskar"]
                         .map(|h| format!("npc_dota_hero_{h}"))
                         .to_vec(),
+                    // The item panel: Lion's items not read for a while.
+                    stale_enemy: "npc_dota_hero_lion".into(),
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -674,4 +676,47 @@ fn recognises_hero_names_in_any_language() {
     );
     assert_eq!(read(&["ZEUS"]).as_deref(), Some("npc_dota_hero_zuus"));
     assert_eq!(read(&[""]), None);
+}
+
+/// Items seen on an enemy count like the hero itself, and the coach asks for
+/// a click on an enemy whose items are old, while it's safe to look.
+#[test]
+fn uses_the_items_read_on_enemies() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+    let axe = "npc_dota_hero_axe".to_string();
+    let mut s = GameSnapshot {
+        in_game: true,
+        clock_time: 1300,
+        team: "radiant".into(),
+        role: "pos5".into(),
+        alive: true,
+        gold: 1200,
+        enemy_heroes: vec![axe.clone()],
+        hero_items: [(axe.clone(), vec!["item_invis_sword".into()])].into(),
+        stale_enemy: axe,
+        ..Default::default()
+    };
+    let said = |engine: &mut RuleEngine, s: &GameSnapshot, rule: &str| {
+        engine
+            .advise(s)
+            .into_iter()
+            .filter(|a| a.rule_id == rule)
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        said(&mut engine, &s, "universal/counters"),
+        ["They have Axe. Carry Dust and Sentry wards."]
+    );
+    assert!(
+        said(&mut engine, &s, "universal/check_items").is_empty(),
+        "out on the map"
+    );
+    (s.xpos, s.ypos) = (-7000, -6600);
+    assert_eq!(
+        said(&mut engine, &s, "universal/check_items"),
+        ["Click their Axe on the top bar to check the items."]
+    );
 }

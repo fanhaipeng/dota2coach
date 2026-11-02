@@ -4,7 +4,8 @@
 // items you don't already have.
 //
 // Each counter lists the enemy heroes it answers (internal names without
-// `npc_dota_hero_`), how many of them it takes, from when, and per role the
+// `npc_dota_hero_`) and the items that give an enemy the same problem, how
+// many of them it takes, from when, and per role the
 // message to say and the items that count as already having it. Roles not
 // listed get nothing for that counter; "" is a role not detected yet.
 // Hero names are in the `hero` table of the language files.
@@ -50,38 +51,51 @@ fn counters() {
 
     // Pushed one by one: one big literal is too deep for the rule engine.
     let all = [];
-    all.push(#{ heroes: invis, min: 1, from: 300, roles: #{
+    all.push(#{ heroes: invis, items: ["item_invis_sword", "item_silver_edge", "item_glimmer_cape", "item_shadow_amulet"], min: 1, from: 300, roles: #{
             "": ["counter.invis_core", dust],
             pos1: ["counter.invis_core", dust], pos2: ["counter.invis_core", dust],
             pos3: ["counter.invis_core", dust],
             pos4: ["counter.invis_support", vision], pos5: ["counter.invis_support", vision] } });
-    all.push(#{ heroes: magic, min: 3, from: 600, roles: #{
+    all.push(#{ heroes: magic, items: [], min: 3, from: 600, roles: #{
             pos1: ["counter.magic_core", bkb], pos2: ["counter.magic_core", bkb],
             pos3: ["counter.magic_offlane", bkb_pipe],
             pos4: ["counter.magic_support", glimmer], pos5: ["counter.magic_support", glimmer] } });
-    all.push(#{ heroes: lockdown, min: 1, from: 900, roles: #{
+    all.push(#{ heroes: lockdown, items: [], min: 1, from: 900, roles: #{
             pos1: ["counter.lockdown", linken], pos2: ["counter.lockdown", linken] } });
-    all.push(#{ heroes: evasion, min: 1, from: 900, roles: #{
+    all.push(#{ heroes: evasion, items: ["item_butterfly"], min: 1, from: 900, roles: #{
             pos1: ["counter.evasion", mkb] } });
-    all.push(#{ heroes: heal, min: 1, from: 600, roles: #{
+    all.push(#{ heroes: heal, items: ["item_satanic", "item_heart"], min: 1, from: 600, roles: #{
             pos1: ["counter.heal_core", skadi], pos2: ["counter.heal_core", skadi],
             pos3: ["counter.heal_vessel", vessel], pos4: ["counter.heal_vessel", vessel] } });
-    all.push(#{ heroes: illusions, min: 1, from: 600, roles: #{
+    all.push(#{ heroes: illusions, items: ["item_manta"], min: 1, from: 600, roles: #{
             pos1: ["counter.illusions", cleave], pos2: ["counter.illusions", cleave] } });
-    all.push(#{ heroes: passives, min: 1, from: 1200, roles: #{
+    all.push(#{ heroes: passives, items: [], min: 1, from: 1200, roles: #{
             pos3: ["counter.passives", silver] } });
-    all.push(#{ heroes: physical, min: 2, from: 600, roles: #{
+    all.push(#{ heroes: physical, items: ["item_desolator"], min: 2, from: 600, roles: #{
             pos4: ["counter.physical", ghost], pos5: ["counter.physical", ghost] } });
     all
 }
 
-// Enemy heroes this counter answers, as message keys like `hero.riki`.
-fn matching(c, enemies) {
+// Enemy heroes this counter answers, as message keys like `hero.riki`: by
+// who they are, or by an item they were seen carrying in the item panel.
+fn matching(s, c, enemies) {
     let found = [];
     for hero in enemies {
-        if c.heroes.contains(hero) { found.push("hero." + hero); }
+        if c.heroes.contains(hero) || carries(s, hero, c.items) {
+            found.push("hero." + hero);
+        }
     }
     found
+}
+
+fn carries(s, hero, items) {
+    let key = "npc_dota_hero_" + hero;
+    if !(key in s.hero_items) { return false; }
+    let seen = s.hero_items[key];
+    for item in items {
+        if seen.contains(item) { return true; }
+    }
+    false
 }
 
 fn owns_any(s, items) {
@@ -98,7 +112,7 @@ fn check(s) {
 
     for c in counters() {
         if s.clock_time < c.from || !(s.role in c.roles) { continue; }
-        let found = matching(c, enemies);
+        let found = matching(s, c, enemies);
         let pick = c.roles[s.role];
         if found.len() < c.min || owns_any(s, pick[1]) { continue; }
         found.truncate(2);

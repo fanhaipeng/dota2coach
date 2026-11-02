@@ -85,6 +85,7 @@ roshan = "{count} enemies dead for {secs} seconds. Take Roshan or high ground."
 allies_dead = "{count} teammates dead. Play safe, don't fight alone."
 gank = "Enemies near you and no teammates around. Back off or get help."
 missing = "{count} enemies just vanished from the map. Watch for a gank."
+check_items = "Click their {hero} on the top bar to check the items."
 
 # Counter items against the enemy lineup (universal/counters.rhai).
 [counter]

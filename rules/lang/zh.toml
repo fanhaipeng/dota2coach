@@ -84,6 +84,7 @@ roshan = "{count}个敌人阵亡，还有{secs}秒复活。去打肉山或者上
 allies_dead = "{count}个队友阵亡。打得保守一点，别一个人打。"
 gank = "附近有敌人，队友不在身边。后撤或者找队友。"
 missing = "{count}个敌人刚从小地图上消失。小心被抓。"
+check_items = "点一下顶栏的{hero}，看看出了什么装备。"
 
 # 针对敌方阵容的出装（universal/counters.rhai）。
 [counter]
