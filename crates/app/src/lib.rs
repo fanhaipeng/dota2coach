@@ -742,6 +742,10 @@ pub fn apply_minimap(s: &mut GameSnapshot, map: &vision::minimap::Minimap) {
         .map_or(-1, |d| d.round() as i64);
     s.enemies_near = enemies.iter().filter(|&&d| d <= NEAR as f64).count() as i64;
     s.allies_near = allies.iter().filter(|&&d| d <= NEAR as f64).count() as i64;
+    s.allies_close = allies
+        .iter()
+        .filter(|&&d| d <= coach::snapshot::CLOSE as f64)
+        .count() as i64;
 }
 
 /// Counts enemies that dropped off the minimap without dying: the most seen
