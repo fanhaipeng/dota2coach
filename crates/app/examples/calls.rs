@@ -65,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
                 apply_lineup(s, lineup);
             }
             panel_items.observe(s, frame.panel.as_ref());
+            s.quickbuy_set = frame.quickbuy;
             if (s.ally_items_age == 0 || s.enemy_items_age == 0)
                 && let Some(p) = &frame.panel
             {
@@ -162,6 +163,8 @@ struct Frame {
     /// The lineup, once it would have been read live.
     lineup: Option<Lineup>,
     panel: Option<PanelRead>,
+    /// An item queued for quick-buy, from the small screen copy.
+    quickbuy: bool,
 }
 
 /// Every frame, read in clock order as live: the minimap reader learns the
@@ -217,6 +220,13 @@ fn read_frames(dir: &std::path::Path) -> BTreeMap<i64, Frame> {
             }
             _ => None,
         };
+        let quickbuy = open("screen").is_some_and(|screen| {
+            let screen = screen.into_rgb8();
+            let r = vision::quickbuy_area(screen.width(), screen.height());
+            vision::quickbuy_set(
+                &image::imageops::crop_imm(&screen, r.x, r.y, r.width, r.height).to_image(),
+            )
+        });
         out.insert(
             clock,
             Frame {
@@ -224,6 +234,7 @@ fn read_frames(dir: &std::path::Path) -> BTreeMap<i64, Frame> {
                 map: minimap.read(&map.into_rgb8()),
                 lineup: lineup.clone(),
                 panel,
+                quickbuy,
             },
         );
     }
