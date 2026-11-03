@@ -503,6 +503,7 @@ fn reads_the_minimap_around_you() {
         ),
         (2, 1000, 1, 1)
     );
+    assert_eq!(s.allies_close, 2, "the teammate 2000 away can still help");
 
     let alone = Minimap {
         allies: vec![p(-3000, -3000)],

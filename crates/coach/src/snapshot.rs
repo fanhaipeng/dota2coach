@@ -95,6 +95,9 @@ pub struct GameSnapshot {
     pub enemies_near: i64,
     /// Teammates seen within [`NEAR`] of you, not counting you.
     pub allies_near: i64,
+    /// Teammates seen within [`CLOSE`] of you: near enough to help in a
+    /// fight.
+    pub allies_close: i64,
     /// Enemies seen on the minimap in the last few seconds that have since
     /// vanished without dying.
     pub enemies_missing: i64,
@@ -133,6 +136,8 @@ pub const STALE_ITEMS: i64 = 300;
 
 /// World units within which a hero counts as near you: about a screen.
 pub const NEAR: i64 = 1500;
+/// World units within which a teammate can join your fight.
+pub const CLOSE: i64 = 2000;
 
 /// A dead enemy with this many seconds left counts as out of the game for long
 /// enough to take an objective.
