@@ -11,6 +11,9 @@
 //! - mostly the offlane is pos3, or pos4 for a support;
 //! - no lane most of the time (roaming, jungling) is pos4.
 //!
+//! Heroes that are almost never played as supports ([`CORE_HEROES`]) are only
+//! taken for one when they carry observer wards or smoke.
+//!
 //! It decides at 4:00 or as soon after as it has enough samples, and gives up
 //! at 6:00. Last hits alone are a weak sign of a support: in unranked games two
 //! players often fight over the same lane's farm. So a support guess made only
@@ -35,6 +38,46 @@ const SUPPORT_MAX_LAST_HITS: i64 = 10;
 const RECHECK_AT: i64 = 600;
 /// Last hits by [`RECHECK_AT`] that say the hero is farming like a core.
 const CORE_MIN_LAST_HITS: i64 = 30;
+
+/// Heroes almost never played as supports, by short name. Few last hits on
+/// one of them means a contested lane, not a support.
+const CORE_HEROES: &[&str] = &[
+    "antimage",
+    "alchemist",
+    "arc_warden",
+    "bloodseeker",
+    "bristleback",
+    "chaos_knight",
+    "drow_ranger",
+    "faceless_void",
+    "gyrocopter",
+    "huskar",
+    "juggernaut",
+    "life_stealer",
+    "luna",
+    "lycan",
+    "medusa",
+    "meepo",
+    "monkey_king",
+    "morphling",
+    "naga_siren",
+    "nevermore",
+    "phantom_assassin",
+    "phantom_lancer",
+    "razor",
+    "riki",
+    "skeleton_king",
+    "slark",
+    "sniper",
+    "spectre",
+    "sven",
+    "templar_assassin",
+    "terrorblade",
+    "troll_warlord",
+    "ursa",
+    "viper",
+    "weaver",
+];
 
 const SUPPORT_ITEMS: &[&str] = &[
     "item_ward_observer",
@@ -157,7 +200,16 @@ impl RoleDetector {
         .max_by_key(|(count, _)| *count)?;
         let lane = (f64::from(count) / f64::from(total) >= MIN_SHARE).then_some(lane);
         let support_items = SUPPORT_ITEMS.iter().any(|i| s.has_item(i));
-        let support = s.last_hits <= SUPPORT_MAX_LAST_HITS || support_items;
+        let core_hero = CORE_HEROES.contains(&s.hero.as_str());
+        // Cores buy a sentry now and then; observer wards or smoke mean support.
+        let support = if core_hero {
+            SUPPORT_ITEMS
+                .iter()
+                .filter(|i| **i != "item_ward_sentry")
+                .any(|i| s.has_item(i))
+        } else {
+            support_items || s.last_hits <= SUPPORT_MAX_LAST_HITS
+        };
         if support && !support_items && matches!(lane, Some(Lane::Safe | Lane::Off)) {
             self.recheck = lane;
         }
@@ -263,6 +315,37 @@ mod tests {
         assert_eq!(role(laning("dire", (4800, -6200), 20, &[])), "pos3");
         assert_eq!(role(laning("dire", (4800, -6200), 3, &[])), "pos4");
         assert_eq!(role(laning("dire", (1500, -3000), 3, &[])), "pos4");
+    }
+
+    #[test]
+    fn core_heroes_need_wards_to_count_as_supports() {
+        let lane = |hero: &str, items: &[&str]| {
+            let mut detector = RoleDetector::default();
+            (0..=DECIDE_AT)
+                .filter_map(|t| {
+                    detector.observe(&GameSnapshot {
+                        in_game: true,
+                        clock_time: t,
+                        alive: true,
+                        team: "dire".into(),
+                        hero: hero.into(),
+                        xpos: 4800,
+                        ypos: -6200,
+                        last_hits: 6,
+                        items: items.iter().map(|i| (*i).to_owned()).collect(),
+                        ..Default::default()
+                    })
+                })
+                .map(|d| d.role)
+                .next()
+        };
+        assert_eq!(lane("ursa", &[]).as_deref(), Some("pos3"));
+        assert_eq!(
+            lane("ursa", &["item_ward_observer"]).as_deref(),
+            Some("pos4")
+        );
+        assert_eq!(lane("ursa", &["item_ward_sentry"]).as_deref(), Some("pos3"));
+        assert_eq!(lane("lion", &[]).as_deref(), Some("pos4"));
     }
 
     /// A support guess from few last hits becomes the lane's core once the
