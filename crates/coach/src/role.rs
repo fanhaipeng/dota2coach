@@ -12,7 +12,7 @@
 //! - no lane most of the time (roaming, jungling) is pos4.
 //!
 //! Heroes that are almost never played as supports ([`CORE_HEROES`]) are only
-//! taken for one when they carry wards or smoke.
+//! taken for one when they carry observer wards or smoke.
 //!
 //! It decides at 4:00 or as soon after as it has enough samples, and gives up
 //! at 6:00. Last hits alone are a weak sign of a support: in unranked games two
@@ -201,7 +201,15 @@ impl RoleDetector {
         let lane = (f64::from(count) / f64::from(total) >= MIN_SHARE).then_some(lane);
         let support_items = SUPPORT_ITEMS.iter().any(|i| s.has_item(i));
         let core_hero = CORE_HEROES.contains(&s.hero.as_str());
-        let support = support_items || (s.last_hits <= SUPPORT_MAX_LAST_HITS && !core_hero);
+        // Cores buy a sentry now and then; observer wards or smoke mean support.
+        let support = if core_hero {
+            SUPPORT_ITEMS
+                .iter()
+                .filter(|i| **i != "item_ward_sentry")
+                .any(|i| s.has_item(i))
+        } else {
+            support_items || s.last_hits <= SUPPORT_MAX_LAST_HITS
+        };
         if support && !support_items && matches!(lane, Some(Lane::Safe | Lane::Off)) {
             self.recheck = lane;
         }
@@ -336,6 +344,7 @@ mod tests {
             lane("ursa", &["item_ward_observer"]).as_deref(),
             Some("pos4")
         );
+        assert_eq!(lane("ursa", &["item_ward_sentry"]).as_deref(), Some("pos3"));
         assert_eq!(lane("lion", &[]).as_deref(), Some("pos4"));
     }
 
