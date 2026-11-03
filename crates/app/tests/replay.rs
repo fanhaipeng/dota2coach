@@ -690,6 +690,15 @@ fn recognises_hero_names_in_any_language() {
     let read = |text: &str| names.identify(&[text.to_owned()], &dire).map(str::to_owned);
     assert_eq!(read("剑 圣").as_deref(), Some("npc_dota_hero_juggernaut"));
     assert_eq!(read("潮 汐").as_deref(), Some("npc_dota_hero_tidehunter"));
+    let razor = [
+        "npc_dota_hero_razor".to_owned(),
+        "npc_dota_hero_sven".to_owned(),
+    ];
+    assert_eq!(
+        names.identify(&["雷 泽".to_owned()], &razor),
+        Some("npc_dota_hero_razor"),
+        "Razor's name in the Chinese client"
+    );
 }
 
 /// Items seen on an enemy count like the hero itself, and the coach asks for
