@@ -93,7 +93,9 @@ check_items = "Click their {hero} on the top bar to check the items."
 # Roshan's respawn, from his skull on the minimap (universal/roshan.rhai).
 [roshan]
 killed = "Roshan is down. He's back between {earliest} and {latest}."
-soon = "Roshan can respawn from {earliest}, by {latest} at the latest. Get vision on his pit."
+soon = "Roshan can respawn in 1 minute, from {earliest}. Get vision on his pit."
+window = "Roshan can be back now. He is back by {latest} at the latest."
+last = "Roshan is back within 1 minute, by {latest}."
 
 # Counter items against the enemy lineup (universal/counters.rhai).
 [counter]

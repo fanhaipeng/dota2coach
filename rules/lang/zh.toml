@@ -92,7 +92,9 @@ check_items = "点一下顶栏的{hero}，看看出了什么装备。"
 # 肉山复活（universal/roshan.rhai）。
 [roshan]
 killed = "肉山被打了，{earliest}到{latest}之间复活。"
-soon = "肉山{earliest}起可能复活，最晚{latest}。去看看肉山坑。"
+soon = "肉山最快1分钟后复活（{earliest}）。去看看肉山坑。"
+window = "肉山现在可能已经复活了，最晚{latest}。"
+last = "肉山1分钟内一定复活，最晚{latest}。"
 
 # 针对敌方阵容的出装（universal/counters.rhai）。
 [counter]
