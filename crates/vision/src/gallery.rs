@@ -87,8 +87,8 @@ impl Gallery {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
-    /// The closest picture, how far off it is, and how far off the next
-    /// closest is.
+    /// The closest picture, how far off it is, and how far off the closest
+    /// picture of something else is (a name can have several pictures).
     pub fn best_two(&self, picture: &RgbImage) -> Option<(usize, f32, f32)> {
         let t = thumb(picture, self.size);
         let mut ranked: Vec<(usize, f32)> = self
@@ -99,7 +99,17 @@ impl Gallery {
             .collect();
         ranked.sort_by(|a, b| a.1.total_cmp(&b.1));
         let (best, d) = *ranked.first()?;
-        Some((best, d, ranked.get(1).map_or(f32::MAX, |r| r.1)))
+        let other = ranked
+            .iter()
+            .find(|(i, _)| self.names[*i] != self.names[best])
+            .map_or(f32::MAX, |r| r.1);
+        Some((best, d, other))
+    }
+
+    /// Adds a picture.
+    pub fn push(&mut self, name: String, image: &RgbImage) {
+        self.thumbs.push(thumb(image, self.size));
+        self.names.push(name);
     }
 
     /// The closest picture, and how far off it is.

@@ -540,6 +540,40 @@ pub fn panel_candidates(
     (candidates, outsiders)
 }
 
+/// Puts a hero named in the panel into the lineup slot the top bar couldn't
+/// tell, when there's exactly one such slot and its hero is alive (so its
+/// portrait is in colour). Returns the slot (0 to 4 Radiant, 5 to 9 Dire).
+pub fn place_found_hero(
+    lineup: &mut vision::heroes::Lineup,
+    hero: &str,
+    bar: &vision::topbar::TopBar,
+) -> Option<usize> {
+    let slots: Vec<&String> = lineup.radiant.iter().chain(&lineup.dire).collect();
+    if slots.iter().any(|h| *h == hero) {
+        return None;
+    }
+    let [slot] = slots
+        .iter()
+        .enumerate()
+        .filter(|(_, h)| h.is_empty())
+        .map(|(i, _)| i)
+        .collect::<Vec<_>>()[..]
+    else {
+        return None;
+    };
+    let dead = bar.radiant.iter().chain(&bar.dire).nth(slot)?.dead;
+    if dead {
+        return None;
+    }
+    let side = if slot < 5 {
+        &mut lineup.radiant
+    } else {
+        &mut lineup.dire
+    };
+    side[slot % 5] = hero.to_owned();
+    Some(slot)
+}
+
 /// Hero names in every language of the rules folder (its `[hero]` tables),
 /// for recognising the name written above the selected hero's face whatever
 /// language Dota is set to.

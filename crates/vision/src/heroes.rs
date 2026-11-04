@@ -5,7 +5,7 @@
 //! bar, so [`LineupReader`] votes over many frames and only answers once each
 //! slot has a clear winner.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use image::RgbImage;
 
@@ -35,6 +35,9 @@ const FACE: ThumbSize = ThumbSize {
     h: 12,
     rows: 12,
 };
+/// The folder, inside the hero portraits folder, of portraits learned from
+/// matches.
+const LEARNED: &str = "learned";
 /// Votes a slot needs, and the share of them its winner needs, before the
 /// lineup counts as read.
 const MIN_VOTES: u32 = 20;
@@ -78,7 +81,49 @@ impl References {
                 ));
             }
         }
-        Ok(Self::with_faces(portraits, heroes))
+        let mut refs = Self::with_faces(portraits, heroes);
+        // Portraits learned from earlier matches: alternative looks that
+        // Valve's pictures don't show.
+        if let Ok(entries) = std::fs::read_dir(dir.join(LEARNED)) {
+            for path in entries.flatten().map(|e| e.path()) {
+                if path.extension().is_some_and(|e| e == "png")
+                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                {
+                    let short = stem.rsplit_once('-').map_or(stem, |(short, _)| short);
+                    refs.add(
+                        &format!("npc_dota_hero_{short}"),
+                        &image::open(&path)?.into_rgb8(),
+                    );
+                }
+            }
+        }
+        Ok(refs)
+    }
+
+    /// Adds another portrait of `hero`, for example an alternative look.
+    pub fn add(&mut self, hero: &str, portrait: &RgbImage) {
+        self.portraits.push(hero.to_owned(), portrait);
+    }
+
+    /// Saves a portrait of `hero` among the learned ones in `dir` (the hero
+    /// portraits folder), for [`load`](Self::load) next time, and adds it
+    /// now. Returns the file written.
+    pub fn learn(
+        &mut self,
+        dir: &Path,
+        hero: &str,
+        portrait: &RgbImage,
+    ) -> anyhow::Result<PathBuf> {
+        let short = hero.strip_prefix("npc_dota_hero_").unwrap_or(hero);
+        let learned = dir.join(LEARNED);
+        std::fs::create_dir_all(&learned)?;
+        let path = (1..)
+            .map(|n| learned.join(format!("{short}-{n}.png")))
+            .find(|p| !p.exists())
+            .expect("a free file name");
+        portrait.save(&path)?;
+        self.add(hero, portrait);
+        Ok(path)
     }
 
     /// From (internal name, portrait) pairs.
@@ -160,6 +205,11 @@ impl References {
             Some(self.portraits.name(best))
         })
     }
+}
+
+/// The portrait in slot `i` (0 to 4 Radiant, 5 to 9 Dire) of a top-bar crop.
+pub fn slot_portrait(image: &RgbImage, i: usize) -> RgbImage {
+    portrait(&topbar::at_detail(image), i)
 }
 
 /// Slot `i` (0 to 4 Radiant, 5 to 9 Dire) of a top-bar crop at 1080p detail.
@@ -324,6 +374,26 @@ mod tests {
         for (i, seed) in seeds.iter().enumerate() {
             assert_eq!(read[i], Some(format!("npc_dota_hero_{seed}").as_str()));
         }
+    }
+
+    #[test]
+    fn learns_an_alternative_look() {
+        let dir = std::env::temp_dir().join(format!("dota2coach-learned-{}", std::process::id()));
+        let mut refs = refs();
+        // A look unlike any reference, learned as hero 3.
+        let look = art(40, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
+        let image = bar([40, 1, 4, 10, 5, 9, 2, 6, 0, 7]);
+        assert_ne!(
+            refs.read_frame(&image, &TopBar::default())[0],
+            Some("npc_dota_hero_3")
+        );
+        refs.learn(&dir, "npc_dota_hero_3", &look).unwrap();
+        assert_eq!(
+            refs.read_frame(&image, &TopBar::default())[0],
+            Some("npc_dota_hero_3")
+        );
+        assert!(dir.join(LEARNED).join("3-1.png").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

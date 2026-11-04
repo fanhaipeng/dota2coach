@@ -867,3 +867,45 @@ fn reminds_of_a_tp_only_when_it_helps() {
     assert!(!said(500, &["item_travel_boots"], &[]));
     assert!(!said(500, &[], &["item_tpscroll"]));
 }
+
+#[test]
+fn places_a_named_hero_in_the_one_unknown_slot() {
+    use dota2coach::place_found_hero;
+    use vision::heroes::Lineup;
+    use vision::topbar::TopBar;
+
+    let h = |s: &str| format!("npc_dota_hero_{s}");
+    let mut lineup = Lineup {
+        radiant: [h("lich"), h("luna"), h("ursa"), h("sniper"), h("lion")],
+        dire: [
+            h("shadow_shaman"),
+            String::new(),
+            h("drow_ranger"),
+            h("kez"),
+            h("zuus"),
+        ],
+    };
+    let mut bar = TopBar::default();
+    bar.dire[1].dead = true;
+    assert_eq!(
+        place_found_hero(&mut lineup, &h("juggernaut"), &bar),
+        None,
+        "grey while dead"
+    );
+    bar.dire[1].dead = false;
+    assert_eq!(
+        place_found_hero(&mut lineup, &h("lich"), &bar),
+        None,
+        "already placed"
+    );
+    assert_eq!(
+        place_found_hero(&mut lineup, &h("juggernaut"), &bar),
+        Some(6)
+    );
+    assert_eq!(lineup.dire[1], h("juggernaut"));
+    assert_eq!(
+        place_found_hero(&mut lineup, &h("axe"), &bar),
+        None,
+        "no unknown slot left"
+    );
+}
