@@ -8,8 +8,8 @@ use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
     CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, HeroNames, MissingEnemies, PanelItems,
     PanelNamer, PanelRead, Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes,
-    fetch_items, latest_recording, panel_candidates, resolve_heroes_dir, resolve_items_dir,
-    resolve_rules_dir, review_file, run_coach, steam,
+    fetch_items, latest_recording, panel_candidates, place_found_hero, resolve_heroes_dir,
+    resolve_items_dir, resolve_rules_dir, review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -244,7 +244,10 @@ async fn main() -> anyhow::Result<()> {
             if screen {
                 info!("reading the top bar and the minimap from the screen");
                 let heroes = match resolve_heroes_dir(None) {
-                    Some(dir) => Some(vision::heroes::References::load(&dir)?),
+                    Some(dir) => {
+                        let refs = vision::heroes::References::load(&dir)?;
+                        Some((dir, refs))
+                    }
                     None => {
                         info!("run `dota2coach fetch-heroes` once to also read who is playing");
                         None
@@ -400,7 +403,7 @@ struct ScreenRead {
 fn read_screen(
     clock: watch::Receiver<GameClock>,
     out: watch::Sender<Option<ScreenRead>>,
-    heroes: Option<vision::heroes::References>,
+    mut heroes: Option<(PathBuf, vision::heroes::References)>,
     mut panel_reader: Option<(vision::items::Icons, PanelNamer)>,
 ) {
     std::thread::spawn(move || {
@@ -409,9 +412,16 @@ fn read_screen(
         // The minimap reader learns where the buildings are, per match.
         let mut minimap = (String::new(), vision::minimap::Reader::default());
         // The lineup is read by voting over frames until it's sure, per match.
-        let all_heroes: Vec<String> = heroes.iter().flat_map(|h| h.names().to_vec()).collect();
-        let new_lineup = || heroes.clone().map(vision::heroes::LineupReader::new);
-        let mut lineup = (new_lineup(), None);
+        let all_heroes: Vec<String> = heroes
+            .iter()
+            .flat_map(|(_, refs)| refs.names().to_vec())
+            .collect();
+        let new_lineup = |heroes: &Option<(PathBuf, vision::heroes::References)>| {
+            heroes
+                .as_ref()
+                .map(|(_, refs)| vision::heroes::LineupReader::new(refs.clone()))
+        };
+        let mut lineup = (new_lineup(&heroes), None);
         while !out.is_closed() {
             std::thread::sleep(SCREEN_EVERY);
             let now = clock.borrow().clone();
@@ -420,7 +430,7 @@ fn read_screen(
             }
             if minimap.0 != now.match_id {
                 minimap = (now.match_id, vision::minimap::Reader::default());
-                lineup = (new_lineup(), None);
+                lineup = (new_lineup(&heroes), None);
             }
             let capture = |s: &DotaScreen| {
                 let panel = match panel_reader {
@@ -450,23 +460,40 @@ fn read_screen(
                             info!(radiant = ?read.radiant, dire = ?read.dire, "read the lineup");
                         }
                     }
+                    let panel = panel
+                        .zip(panel_reader.as_mut())
+                        .map(|(image, (icons, namer))| {
+                            let (known, outsiders) =
+                                panel_candidates(lineup.1.as_ref(), &all_heroes);
+                            PanelRead {
+                                side: vision::items::side(&image),
+                                hero: namer.name(&image, &known, &outsiders),
+                                items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
+                            }
+                        });
+                    // A hero named in the panel that the top bar couldn't
+                    // tell: learn its look, for this match and the next.
+                    if let (Some(read), Some(found), Some((dir, refs))) = (
+                        &mut lineup.1,
+                        panel.as_ref().and_then(|p| p.hero.as_deref()),
+                        &mut heroes,
+                    ) && let Some(slot) = place_found_hero(read, found, &bar)
+                    {
+                        let portrait = vision::heroes::slot_portrait(&bar_image, slot);
+                        match refs.learn(dir, found, &portrait) {
+                            Ok(path) => {
+                                info!(hero = found, file = %path.display(), "learned a hero's look")
+                            }
+                            Err(err) => warn!(%err, "couldn't save a hero's look"),
+                        }
+                    }
                     out.send_replace(Some(ScreenRead {
                         at: Instant::now(),
                         bar,
                         map: minimap.1.read(&map),
                         lineup: lineup.1.clone(),
                         quickbuy: vision::quickbuy_set(&quickbuy),
-                        panel: panel
-                            .zip(panel_reader.as_mut())
-                            .map(|(image, (icons, namer))| {
-                                let (known, outsiders) =
-                                    panel_candidates(lineup.1.as_ref(), &all_heroes);
-                                PanelRead {
-                                    side: vision::items::side(&image),
-                                    hero: namer.name(&image, &known, &outsiders),
-                                    items: icons.inventory(&image).map(|i| i.map(str::to_owned)),
-                                }
-                            }),
+                        panel,
                     }));
                 }
                 Err(err) => {
