@@ -540,6 +540,61 @@ pub fn panel_candidates(
     (candidates, outsiders)
 }
 
+/// Game seconds Roshan's skull must be missing from the minimap to count him
+/// dead: heroes standing on it hide it for a few seconds.
+const ROSHAN_GONE: i64 = 60;
+/// Roshan respawns 8 to 11 minutes after he dies.
+const ROSHAN_BACK: std::ops::RangeInclusive<i64> = 480..=660;
+
+/// Works out when Roshan died from his skull on the minimap, for one match.
+#[derive(Debug, Default)]
+pub struct RoshanTimer {
+    match_id: String,
+    /// Game clock since when the skull has been missing.
+    missing_since: Option<i64>,
+    /// Game clock when he died, while he's dead.
+    killed_at: Option<i64>,
+}
+
+impl RoshanTimer {
+    /// Records whether the skull shows now and fills the snapshot's Roshan
+    /// fields.
+    pub fn observe(&mut self, s: &mut GameSnapshot, shown: bool) {
+        if self.match_id != s.match_id {
+            *self = Self {
+                match_id: s.match_id.clone(),
+                ..Default::default()
+            };
+        }
+        let clock = s.clock_time;
+        if shown {
+            self.missing_since = None;
+            // Back already: the skull shows again once he has respawned.
+            if self
+                .killed_at
+                .is_some_and(|at| clock - at >= *ROSHAN_BACK.start())
+            {
+                self.killed_at = None;
+            }
+        } else {
+            let since = *self.missing_since.get_or_insert(clock);
+            if self.killed_at.is_none() && clock - since >= ROSHAN_GONE {
+                self.killed_at = Some(since);
+            }
+        }
+        // Surely back by now, even if nobody has looked.
+        if self
+            .killed_at
+            .is_some_and(|at| clock - at > *ROSHAN_BACK.end() + ROSHAN_GONE)
+        {
+            self.killed_at = None;
+            self.missing_since = None;
+        }
+        s.roshan_dead = self.killed_at.is_some();
+        s.roshan_killed_at = self.killed_at.unwrap_or(0);
+    }
+}
+
 /// Hero names in every language of the rules folder (its `[hero]` tables),
 /// for recognising the name written above the selected hero's face whatever
 /// language Dota is set to.

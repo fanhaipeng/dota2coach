@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
     let mut loaded = false;
     let mut missing = MissingEnemies::default();
     let mut panel_items = PanelItems::default();
+    let mut roshan = dota2coach::RoshanTimer::default();
     let mut clicks: BTreeMap<i64, String> = BTreeMap::new();
     let mut shown: BTreeMap<i64, String> = BTreeMap::new();
     let mut observe = |s: &mut GameSnapshot| {
@@ -66,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
             }
             panel_items.observe(s, frame.panel.as_ref());
             s.quickbuy_set = frame.quickbuy;
+            roshan.observe(s, frame.roshan);
             if (s.ally_items_age == 0 || s.enemy_items_age == 0)
                 && let Some(p) = &frame.panel
             {
@@ -151,6 +153,7 @@ fn is_screen_rule(id: &str) -> bool {
         "enemies_missing",
         "check_items",
         "counters",
+        "roshan",
     ]
     .iter()
     .any(|r| id.contains(r))
@@ -165,6 +168,8 @@ struct Frame {
     panel: Option<PanelRead>,
     /// An item queued for quick-buy, from the small screen copy.
     quickbuy: bool,
+    /// Roshan's skull shows on the minimap.
+    roshan: bool,
 }
 
 /// Every frame, read in clock order as live: the minimap reader learns the
@@ -231,6 +236,7 @@ fn read_frames(dir: &std::path::Path) -> BTreeMap<i64, Frame> {
             clock,
             Frame {
                 bar,
+                roshan: vision::minimap::roshan_shown(&map.to_rgb8()),
                 map: minimap.read(&map.into_rgb8()),
                 lineup: lineup.clone(),
                 panel,

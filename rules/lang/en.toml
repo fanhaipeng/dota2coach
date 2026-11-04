@@ -90,6 +90,11 @@ gank = "Enemies near you and no teammates around. Back off or get help."
 missing = "{count} enemies just vanished from the map. Watch for a gank."
 check_items = "Click their {hero} on the top bar to check the items."
 
+# Roshan's respawn, from his skull on the minimap (universal/roshan.rhai).
+[roshan]
+killed = "Roshan is down. He's back between {earliest} and {latest}."
+soon = "Roshan can respawn from {earliest}, by {latest} at the latest. Get vision on his pit."
+
 # Counter items against the enemy lineup (universal/counters.rhai).
 [counter]
 invis_core = "They have {heroes}. Keep Dust on you."

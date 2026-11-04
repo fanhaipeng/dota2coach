@@ -317,6 +317,9 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemies_seen: 2,
                     enemies_near: if t % 90 < 30 { 2 } else { 0 },
                     enemies_missing: if t % 300 < 60 { 4 } else { 0 },
+                    // Roshan dies every 10 minutes.
+                    roshan_dead: true,
+                    roshan_killed_at: t - t.rem_euclid(600),
                     // The lineup: an invisible hero and lots of magic.
                     enemy_heroes: ["riki", "lion", "lina", "zuus", "huskar"]
                         .map(|h| format!("npc_dota_hero_{h}"))
@@ -866,4 +869,32 @@ fn reminds_of_a_tp_only_when_it_helps() {
     assert!(!said(40, &[], &[]), "can't afford one");
     assert!(!said(500, &["item_travel_boots"], &[]));
     assert!(!said(500, &[], &["item_tpscroll"]));
+}
+
+#[test]
+fn times_roshan_from_his_skull_on_the_minimap() {
+    use coach::GameSnapshot;
+    use dota2coach::RoshanTimer;
+
+    let mut timer = RoshanTimer::default();
+    let mut at = |clock, shown| {
+        let mut s = GameSnapshot {
+            match_id: "1".into(),
+            clock_time: clock,
+            ..Default::default()
+        };
+        timer.observe(&mut s, shown);
+        (s.roshan_dead, s.roshan_killed_at)
+    };
+    assert_eq!(at(2200, true), (false, 0));
+    // A hero standing on the pit hides the skull for a few seconds.
+    assert_eq!(at(2210, false), (false, 0));
+    assert_eq!(at(2230, true), (false, 0));
+    // Gone for a minute: killed when it went.
+    assert_eq!(at(2268, false), (false, 0));
+    assert_eq!(at(2300, false), (false, 0));
+    assert_eq!(at(2328, false), (true, 2268));
+    // Something red on the pit before he can be back changes nothing.
+    assert_eq!(at(2450, true), (true, 2268));
+    assert_eq!(at(2838, true), (false, 0), "back after 8 minutes");
 }

@@ -61,6 +61,35 @@ pub struct Minimap {
     pub enemies: Vec<Point>,
 }
 
+/// The two Roshan pits on the minimap (at 1080p detail). Roshan moves
+/// between them with day and night, and the minimap shows a red skull at
+/// the one he's in while he's alive.
+const ROSHAN_PITS: [(u32, u32); 2] = [(78, 103), (161, 173)];
+/// Red pixels around a pit that make the skull.
+const MIN_SKULL_PIXELS: usize = 15;
+
+/// Whether Roshan's skull shows at either pit: false while he's dead (or
+/// when something covers it for a moment).
+pub fn roshan_shown(image: &RgbImage) -> bool {
+    let scaled;
+    let image = if image.dimensions() == (SIZE, SIZE) {
+        image
+    } else {
+        scaled = image::imageops::resize(image, SIZE, SIZE, image::imageops::FilterType::Triangle);
+        &scaled
+    };
+    ROSHAN_PITS.iter().any(|&(cx, cy)| {
+        let red = (cy - 6..cy + 6)
+            .flat_map(|y| (cx - 7..cx + 7).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let [r, g, b] = image.get_pixel(x, y).0;
+                r > 150 && g < 70 && b < 70
+            })
+            .count();
+        red > MIN_SKULL_PIXELS
+    })
+}
+
 /// Where a minimap pixel is in world units.
 pub fn to_world(px: f32, py: f32) -> Point {
     Point {
@@ -399,6 +428,17 @@ mod tests {
             read.enemies[0].distance(to_world(180.0, 60.0)) < 150.0,
             "{read:?}"
         );
+    }
+
+    #[test]
+    fn sees_roshan_at_either_pit() {
+        let mut image = map();
+        assert!(!roshan_shown(&image));
+        for (x, y) in [(76, 101), (161, 173)] {
+            square(&mut image, x, y, [200, 30, 30]);
+            assert!(roshan_shown(&image));
+            image = map();
+        }
     }
 
     #[test]
