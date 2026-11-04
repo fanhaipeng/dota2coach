@@ -872,6 +872,56 @@ fn reminds_of_a_tp_only_when_it_helps() {
 }
 
 #[test]
+fn counts_down_to_roshan() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let mut engine = RuleEngine::load(repo().join("rules"), Packs::default(), "en").unwrap();
+    // Killed at 30:00. Cooldowns live in the coordinator, so keep when each
+    // message first comes up.
+    let said = |engine: &mut RuleEngine, clock: i64| {
+        let s = GameSnapshot {
+            in_game: true,
+            clock_time: clock,
+            alive: true,
+            screen: true,
+            roshan_dead: true,
+            roshan_killed_at: 1800,
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .find(|a| a.rule_id == "universal/roshan")
+            .map(|a| a.message)
+    };
+    let mut calls: Vec<(i64, String)> = Vec::new();
+    for t in 1800..2600 {
+        if let Some(m) = said(&mut engine, t)
+            && calls.last().is_none_or(|(_, last)| *last != m)
+        {
+            calls.push((t, m));
+        }
+    }
+    assert_eq!(
+        calls,
+        [
+            (
+                1860,
+                "Roshan is down. He's back between 38:00 and 41:00.".into()
+            ),
+            (
+                2220,
+                "Roshan can respawn in 1 minute, from 38:00. Get vision on his pit.".into()
+            ),
+            (
+                2280,
+                "Roshan can be back now. He is back by 41:00 at the latest.".into()
+            ),
+            (2400, "Roshan is back within 1 minute, by 41:00.".into()),
+        ]
+    );
+}
+
+#[test]
 fn places_a_named_hero_in_the_one_unknown_slot() {
     use dota2coach::place_found_hero;
     use vision::heroes::Lineup;
