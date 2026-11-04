@@ -839,3 +839,31 @@ fn learns_a_hero_the_lineup_missed_from_its_name() {
     assert!(s.ally_heroes.contains(&h("antimage")));
     assert_eq!(s.hero_items[&h("antimage")], ["item_bfury"]);
 }
+
+/// The TP reminder: only when you can buy one, and not with Boots of Travel
+/// or a TP in the stash.
+#[test]
+fn reminds_of_a_tp_only_when_it_helps() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let said = |gold: i64, items: &[&str], stash: &[&str]| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let s = GameSnapshot {
+            in_game: true,
+            clock_time: 600,
+            alive: true,
+            gold,
+            items: items.iter().map(|i| i.to_string()).collect(),
+            stash: stash.iter().map(|i| i.to_string()).collect(),
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .any(|a| a.rule_id == "universal/no_tp")
+    };
+    assert!(said(500, &[], &[]));
+    assert!(!said(40, &[], &[]), "can't afford one");
+    assert!(!said(500, &["item_travel_boots"], &[]));
+    assert!(!said(500, &[], &["item_tpscroll"]));
+}
