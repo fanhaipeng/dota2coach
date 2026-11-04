@@ -89,6 +89,11 @@ gank = "附近有敌人，队友不在身边。后撤或者找队友。"
 missing = "{count}个敌人刚从小地图上消失。小心被抓。"
 check_items = "点一下顶栏的{hero}，看看出了什么装备。"
 
+# 肉山复活（universal/roshan.rhai）。
+[roshan]
+killed = "肉山被打了，{earliest}到{latest}之间复活。"
+soon = "肉山{earliest}起可能复活，最晚{latest}。去看看肉山坑。"
+
 # 针对敌方阵容的出装（universal/counters.rhai）。
 [counter]
 invis_core = "对面有{heroes}。身上带粉。"

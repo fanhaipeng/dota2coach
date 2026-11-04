@@ -7,9 +7,9 @@ use coach::{Catalog, GameSnapshot};
 use dota2coach::writeup::{Claude, Reviewer};
 use dota2coach::{
     CoachConfig, DEFAULT_HEROES_DIR, DEFAULT_ITEMS_DIR, HeroNames, MissingEnemies, PanelItems,
-    PanelNamer, PanelRead, Recording, apply_lineup, apply_minimap, apply_top_bar, fetch_heroes,
-    fetch_items, latest_recording, panel_candidates, place_found_hero, resolve_heroes_dir,
-    resolve_items_dir, resolve_rules_dir, review_file, run_coach, steam,
+    PanelNamer, PanelRead, Recording, RoshanTimer, apply_lineup, apply_minimap, apply_top_bar,
+    fetch_heroes, fetch_items, latest_recording, panel_candidates, place_found_hero,
+    resolve_heroes_dir, resolve_items_dir, resolve_rules_dir, review_file, run_coach, steam,
 };
 use gsi::record::{self, Recorder};
 use std::time::{Duration, Instant};
@@ -270,6 +270,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let mut missing = MissingEnemies::default();
             let mut panel_items = PanelItems::default();
+            let mut roshan = RoshanTimer::default();
             let mut observe = |s: &mut GameSnapshot| {
                 clock_tx.send_replace(GameClock {
                     match_id: s.match_id.clone(),
@@ -286,6 +287,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     panel_items.observe(s, read.panel.as_ref());
                     s.quickbuy_set = read.quickbuy;
+                    roshan.observe(s, read.roshan);
                     missing.observe(s);
                 }
             };
@@ -396,6 +398,8 @@ struct ScreenRead {
     panel: Option<PanelRead>,
     /// An item is queued for quick-buy.
     quickbuy: bool,
+    /// Roshan's skull shows on the minimap.
+    roshan: bool,
 }
 
 /// Reads the top bar and the minimap on its own thread while a match is
@@ -490,6 +494,7 @@ fn read_screen(
                     out.send_replace(Some(ScreenRead {
                         at: Instant::now(),
                         bar,
+                        roshan: vision::minimap::roshan_shown(&map),
                         map: minimap.1.read(&map),
                         lineup: lineup.1.clone(),
                         quickbuy: vision::quickbuy_set(&quickbuy),

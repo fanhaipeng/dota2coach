@@ -129,6 +129,11 @@ pub struct GameSnapshot {
     /// An item is queued in the quick-buy tray (`run --screen`), so spare
     /// gold is already going somewhere.
     pub quickbuy_set: bool,
+    /// Roshan is dead, from his skull missing on the minimap for a minute
+    /// (`run --screen`), and the game clock when it went: he's back 8 to 11
+    /// minutes later.
+    pub roshan_dead: bool,
+    pub roshan_killed_at: i64,
 }
 
 /// Enemy items older than this, in game seconds, are worth reading again.
