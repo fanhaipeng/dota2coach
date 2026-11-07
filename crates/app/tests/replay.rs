@@ -324,8 +324,16 @@ fn every_role_rule_fires_in_a_bad_game() {
                     enemy_heroes: ["riki", "lion", "lina", "zuus", "huskar"]
                         .map(|h| format!("npc_dota_hero_{h}"))
                         .to_vec(),
-                    // The item panel: Lion's items not read for a while.
+                    // The item panel: Lion's items not read for a while, and
+                    // Huskar clicked now and then.
                     stale_enemy: "npc_dota_hero_lion".into(),
+                    hero_items: [(
+                        "npc_dota_hero_huskar".to_string(),
+                        vec!["item_satanic".to_string(), "item_sphere".to_string()],
+                    )]
+                    .into(),
+                    hero_items_age: [("npc_dota_hero_huskar".to_string(), t.rem_euclid(300))]
+                        .into(),
                     ..Default::default()
                 };
                 for advice in engine.advise(&snapshot) {
@@ -745,6 +753,59 @@ fn uses_the_items_read_on_enemies() {
         said(&mut engine, &s, "universal/check_items"),
         ["Click their Axe on the top bar to check the items."]
     );
+}
+
+#[test]
+fn tells_the_counter_to_what_a_clicked_enemy_carries() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let root = repo().join("rules");
+    let h = |s: &str| format!("npc_dota_hero_{s}");
+    let said = |role: &str, age: i64, items: &[&str]| {
+        let mut engine = RuleEngine::load(&root, Packs::default(), "en").unwrap();
+        let s = GameSnapshot {
+            in_game: true,
+            screen: true,
+            clock_time: 1500,
+            role: role.into(),
+            alive: true,
+            // Little gold: the quick-buy tray buys it.
+            gold: 300,
+            items: items.iter().map(|i| i.to_string()).collect(),
+            enemy_heroes: vec![h("sven"), h("phantom_assassin"), h("lion")],
+            hero_items: [
+                (
+                    h("sven"),
+                    vec!["item_black_king_bar".into(), "item_satanic".into()],
+                ),
+                (
+                    h("phantom_assassin"),
+                    vec!["item_desolator".into(), "item_butterfly".into()],
+                ),
+            ]
+            .into(),
+            hero_items_age: [(h("sven"), age), (h("phantom_assassin"), age)].into(),
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/item_counters")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        said("pos1", 0, &[]),
+        ["Phantom Assassin has Butterfly. Monkey King Bar or Bloodthorn hits through it."]
+    );
+    assert_eq!(
+        said("pos1", 5, &["item_monkey_king_bar"]),
+        ["Sven heals a lot from items. Eye of Skadi or Shiva's Guard cuts it."]
+    );
+    assert_eq!(
+        said("pos5", 10, &[]),
+        ["Sven heals a lot from items. Spirit Vessel cuts it."]
+    );
+    assert!(said("pos1", 120, &[]).is_empty(), "not just read");
 }
 
 /// Rune reminders only for runes you can use: river runes when you're near
