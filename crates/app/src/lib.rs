@@ -448,8 +448,13 @@ impl PanelItems {
             // its items differ from yours (your own bar can look red while
             // you're dead).
             let yours = items.iter().filter(|i| s.items.contains(i)).count();
+            // A name read wrong (a hero label next to the portrait) still
+            // shows your own items: three or more, all yours, is you.
+            let all_yours = items.len() >= 3 && yours == items.len();
             let is_you = match &read.hero {
-                Some(hero) => hero.strip_prefix("npc_dota_hero_") == Some(s.hero.as_str()),
+                Some(hero) => {
+                    hero.strip_prefix("npc_dota_hero_") == Some(s.hero.as_str()) || all_yours
+                }
                 None => items.is_empty() || yours * 2 >= items.len(),
             };
             // A panel with no items tells nothing (and may be a unit, not a

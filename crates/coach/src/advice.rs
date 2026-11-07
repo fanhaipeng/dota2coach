@@ -3,7 +3,7 @@
 use crate::snapshot::GameSnapshot;
 
 /// One piece of advice an advisor wants to say.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Advice {
     /// Stable id, for example `universal/no_tp`. Used for cooldowns and logs.
     pub rule_id: String,
@@ -14,6 +14,11 @@ pub struct Advice {
     pub priority: i64,
     /// Minimum game seconds before this rule may speak again.
     pub cooldown_secs: i64,
+    /// What the advice is about, shared across rules, for example
+    /// `counter.invis.npc_dota_hero_riki`. Advice whose topics were all said
+    /// in the last `topic_cooldown_secs` is skipped, whichever rule said them.
+    pub topics: Vec<String>,
+    pub topic_cooldown_secs: i64,
 }
 
 /// Anything that turns a snapshot into advice: the rule engine today, an LLM
