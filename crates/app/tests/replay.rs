@@ -808,6 +808,44 @@ fn tells_the_counter_to_what_a_clicked_enemy_carries() {
     assert!(said("pos1", 120, &[]).is_empty(), "not just read");
 }
 
+#[test]
+fn tells_the_counter_to_orchid() {
+    use coach::{Advisor, GameSnapshot, Packs, RuleEngine};
+    let clinkz = "npc_dota_hero_clinkz".to_string();
+    let said = |role: &str| {
+        let mut engine = RuleEngine::load(repo().join("rules"), Packs::default(), "en").unwrap();
+        let s = GameSnapshot {
+            in_game: true,
+            screen: true,
+            clock_time: 660,
+            role: role.into(),
+            alive: true,
+            enemy_heroes: vec![clinkz.clone()],
+            hero_items: [(
+                clinkz.clone(),
+                vec!["item_orchid".into(), "item_power_treads".into()],
+            )]
+            .into(),
+            hero_items_age: [(clinkz.clone(), 2)].into(),
+            ..Default::default()
+        };
+        engine
+            .advise(&s)
+            .into_iter()
+            .filter(|a| a.rule_id == "universal/item_counters")
+            .map(|a| a.message)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        said("pos2"),
+        ["Clinkz has Orchid. Manta Style or Black King Bar gets you out of the silence."]
+    );
+    assert_eq!(
+        said("pos5"),
+        ["Clinkz has Orchid. Eul's Scepter or Lotus Orb dispels the silence."]
+    );
+}
+
 /// Rune reminders only for runes you can use: river runes when you're near
 /// them, bounty runes and shrines for supports.
 #[test]
