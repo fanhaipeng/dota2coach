@@ -52,27 +52,27 @@ fn counters() {
 
     // Pushed one by one: one big literal is too deep for the rule engine.
     let all = [];
-    all.push(#{ heroes: invis, items: ["item_invis_sword", "item_silver_edge", "item_glimmer_cape", "item_shadow_amulet"], min: 1, from: 300, roles: #{
+    all.push(#{ cat: "invis", heroes: invis, items: ["item_invis_sword", "item_silver_edge", "item_glimmer_cape", "item_shadow_amulet"], min: 1, from: 300, roles: #{
             "": ["counter.invis_core", dust],
             pos1: ["counter.invis_core", dust], pos2: ["counter.invis_core", dust],
             pos3: ["counter.invis_core", dust],
             pos4: ["counter.invis_support", vision], pos5: ["counter.invis_support", vision] } });
-    all.push(#{ heroes: magic, items: [], min: 3, from: 600, roles: #{
+    all.push(#{ cat: "magic", heroes: magic, items: [], min: 3, from: 600, roles: #{
             pos1: ["counter.magic_core", bkb], pos2: ["counter.magic_core", bkb],
             pos3: ["counter.magic_offlane", bkb_pipe],
             pos4: ["counter.magic_support", glimmer], pos5: ["counter.magic_support", glimmer] } });
-    all.push(#{ heroes: lockdown, items: [], min: 1, from: 900, roles: #{
+    all.push(#{ cat: "lockdown", heroes: lockdown, items: [], min: 1, from: 900, roles: #{
             pos1: ["counter.lockdown", linken], pos2: ["counter.lockdown", linken] } });
-    all.push(#{ heroes: evasion, items: ["item_butterfly"], min: 1, from: 900, roles: #{
+    all.push(#{ cat: "evasion", heroes: evasion, items: ["item_butterfly"], min: 1, from: 900, roles: #{
             pos1: ["counter.evasion", mkb] } });
-    all.push(#{ heroes: heal, items: ["item_satanic", "item_heart"], min: 1, from: 600, roles: #{
+    all.push(#{ cat: "heal", heroes: heal, items: ["item_satanic", "item_heart"], min: 1, from: 600, roles: #{
             pos1: ["counter.heal_core", skadi], pos2: ["counter.heal_core", skadi],
             pos3: ["counter.heal_vessel", vessel], pos4: ["counter.heal_vessel", vessel] } });
-    all.push(#{ heroes: illusions, items: ["item_manta"], min: 1, from: 600, roles: #{
+    all.push(#{ cat: "illusions", heroes: illusions, items: ["item_manta"], min: 1, from: 600, roles: #{
             pos1: ["counter.illusions", cleave], pos2: ["counter.illusions", cleave] } });
-    all.push(#{ heroes: passives, items: [], min: 1, from: 1200, roles: #{
+    all.push(#{ cat: "passives", heroes: passives, items: [], min: 1, from: 1200, roles: #{
             pos3: ["counter.passives", silver] } });
-    all.push(#{ heroes: physical, items: ["item_desolator"], min: 2, from: 600, roles: #{
+    all.push(#{ cat: "physical", heroes: physical, items: ["item_desolator"], min: 2, from: 600, roles: #{
             pos4: ["counter.physical", ghost], pos5: ["counter.physical", ghost] } });
     all
 }
@@ -111,12 +111,23 @@ fn check(s) {
     let enemies = [];
     for name in s.enemy_heroes { enemies.push(name.sub_string(14)); }
 
+    // Every counter that applies, best first: one said recently (by this rule
+    // or `item_counters`) is skipped for the next.
+    let out = [];
     for c in counters() {
         if s.clock_time < c.from || !(s.role in c.roles) { continue; }
         let found = matching(s, c, enemies);
         let pick = c.roles[s.role];
         if found.len() < c.min || owns_any(s, pick[1]) { continue; }
         found.truncate(2);
-        return #{ msg: pick[0], args: #{ heroes: found }, priority: 1, cooldown: 600 };
+        out.push(#{ msg: pick[0], args: #{ heroes: found }, priority: 1, cooldown: 600,
+            topics: topics(c.cat, found) });
     }
+    out
+}
+
+fn topics(cat, heroes) {
+    let out = [];
+    for h in heroes { out.push("counter." + cat + "." + h); }
+    out
 }

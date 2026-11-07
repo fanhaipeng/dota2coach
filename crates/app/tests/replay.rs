@@ -573,6 +573,8 @@ fn suggests_counter_items_for_the_lineup() {
             .into_iter()
             .filter(|a| a.rule_id == "universal/counters")
             .map(|a| a.message)
+            // The best tip; the rest are for when it was said recently.
+            .take(1)
             .collect::<Vec<_>>()
     };
     let lineup = ["riki", "lion", "lina", "zuus", "phantom_assassin"];
@@ -613,7 +615,11 @@ fn remembers_items_of_selected_heroes() {
         let mut s = GameSnapshot {
             match_id: "1".into(),
             clock_time: clock,
-            items: vec!["item_blink".into(), "item_tpscroll".into()],
+            items: vec![
+                "item_blink".into(),
+                "item_tpscroll".into(),
+                "item_arcane_boots".into(),
+            ],
             enemy_heroes: vec![
                 "npc_dota_hero_phantom_assassin".into(),
                 "npc_dota_hero_lion".into(),
@@ -636,6 +642,17 @@ fn remembers_items_of_selected_heroes() {
         }),
     );
     assert!(s.enemy_items.is_empty());
+    // Your own panel with a name read wrong: a hero label next to the portrait.
+    let s = at(
+        112,
+        Some(PanelRead {
+            side: Some(Side::Enemy),
+            hero: Some("npc_dota_hero_phantom_assassin".into()),
+            items: items(&["item_blink", "item_arcane_boots", "item_tpscroll"]),
+        }),
+    );
+    assert!(s.enemy_items.is_empty());
+    assert!(s.hero_items.is_empty());
 
     let s = at(
         120,
@@ -791,6 +808,8 @@ fn tells_the_counter_to_what_a_clicked_enemy_carries() {
             .into_iter()
             .filter(|a| a.rule_id == "universal/item_counters")
             .map(|a| a.message)
+            // The best tip; the rest are for when it was said recently.
+            .take(1)
             .collect::<Vec<_>>()
     };
     assert_eq!(
@@ -834,6 +853,8 @@ fn tells_the_counter_to_orchid() {
             .into_iter()
             .filter(|a| a.rule_id == "universal/item_counters")
             .map(|a| a.message)
+            // The best tip; the rest are for when it was said recently.
+            .take(1)
             .collect::<Vec<_>>()
     };
     assert_eq!(

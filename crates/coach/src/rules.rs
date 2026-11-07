@@ -20,7 +20,9 @@
 //! [`Catalog`]. A literal `say: "..."` is also accepted and spoken as it is,
 //! which is handy while drafting a rule. `priority` defaults to 1 and
 //! `cooldown` (game seconds) to 60. A rule's id is its layer and file stem, for
-//! example `universal/no_tp`.
+//! example `universal/no_tp`. `topics` (an array of strings) names what the
+//! advice is about across rules: advice whose topics were all said in the last
+//! `topic_cooldown` seconds (default 600) is skipped.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -35,6 +37,7 @@ use crate::snapshot::GameSnapshot;
 
 const DEFAULT_PRIORITY: i64 = 1;
 const DEFAULT_COOLDOWN: i64 = 60;
+const DEFAULT_TOPIC_COOLDOWN: i64 = 600;
 
 /// Which rule packs to load on top of the universal ones.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -253,12 +256,21 @@ fn collect(
             .and_then(|v| v.as_int().ok())
             .unwrap_or(default)
     };
+    let topics = map
+        .get("topics")
+        .and_then(|v| v.clone().into_array().ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|v| v.into_immutable_string().ok().map(|s| s.to_string()))
+        .collect();
     debug!(rule = rule_id, %message, "rule fired");
     out.push(Advice {
         rule_id: rule_id.to_owned(),
         message,
         priority: int("priority", DEFAULT_PRIORITY),
         cooldown_secs: int("cooldown", DEFAULT_COOLDOWN),
+        topics,
+        topic_cooldown_secs: int("topic_cooldown", DEFAULT_TOPIC_COOLDOWN),
     });
     Ok(())
 }
