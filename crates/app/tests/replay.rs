@@ -653,6 +653,17 @@ fn remembers_items_of_selected_heroes() {
     );
     assert!(s.enemy_items.is_empty());
     assert!(s.hero_items.is_empty());
+    // An ally's bar named after an enemy: your own panel, items misread.
+    let s = at(
+        114,
+        Some(PanelRead {
+            side: Some(Side::Ally),
+            hero: Some("npc_dota_hero_lion".into()),
+            items: items(&["item_null_talisman", "item_magnifying_monocle"]),
+        }),
+    );
+    assert!(s.ally_items.is_empty());
+    assert!(s.hero_items.is_empty());
 
     let s = at(
         120,

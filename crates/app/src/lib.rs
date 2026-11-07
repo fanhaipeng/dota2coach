@@ -457,9 +457,17 @@ impl PanelItems {
                 }
                 None => items.is_empty() || yours * 2 >= items.len(),
             };
+            // An ally's bar with an enemy's name is your own panel with a
+            // hero label read as its name (allies misread as enemies happen,
+            // this the other way round doesn't).
+            let misnamed = side == vision::items::Side::Ally
+                && read
+                    .hero
+                    .as_ref()
+                    .is_some_and(|h| s.enemy_heroes.contains(h));
             // A panel with no items tells nothing (and may be a unit, not a
             // hero).
-            if !is_you && !items.is_empty() {
+            if !is_you && !misnamed && !items.is_empty() {
                 let (seen, at) = &mut self.seen[usize::from(side == vision::items::Side::Enemy)];
                 for &item in &items {
                     if !seen.contains(item) {
