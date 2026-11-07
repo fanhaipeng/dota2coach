@@ -25,6 +25,9 @@ fn tips() {
     let bkb = ["item_black_king_bar"];
     let glimmer = ["item_glimmer_cape", "item_pipe"];
     let force = ["item_force_staff", "item_hurricane_pike"];
+    let dispel = ["item_manta", "item_black_king_bar", "item_lotus_orb"];
+    let lotus = ["item_lotus_orb", "item_black_king_bar"];
+    let euls = ["item_cyclone", "item_wind_waker", "item_lotus_orb"];
 
     let all = [];
     all.push(#{ items: ["item_invis_sword", "item_silver_edge", "item_glimmer_cape", "item_shadow_amulet"], roles: #{
@@ -44,7 +47,7 @@ fn tips() {
     all.push(#{ items: ["item_manta"], roles: #{
             "": ["counter.item_illusions", cleave],
             pos1: ["counter.item_illusions", cleave], pos2: ["counter.item_illusions", cleave] } });
-    all.push(#{ items: ["item_desolator"], roles: #{
+    all.push(#{ items: ["item_desolator", "item_assault"], roles: #{
             "": ["counter.item_armor_core", armor],
             pos1: ["counter.item_armor_core", armor], pos2: ["counter.item_armor_core", armor],
             pos3: ["counter.item_armor_offlane", crimson],
@@ -54,6 +57,11 @@ fn tips() {
             pos1: ["counter.item_burst_core", bkb], pos2: ["counter.item_burst_core", bkb],
             pos3: ["counter.item_burst_core", bkb],
             pos4: ["counter.item_burst_support", glimmer], pos5: ["counter.item_burst_support", glimmer] } });
+    all.push(#{ items: ["item_orchid", "item_bloodthorn"], roles: #{
+            "": ["counter.item_silence_core", dispel],
+            pos1: ["counter.item_silence_core", dispel], pos2: ["counter.item_silence_core", dispel],
+            pos3: ["counter.item_silence_offlane", lotus],
+            pos4: ["counter.item_silence_support", euls], pos5: ["counter.item_silence_support", euls] } });
     all.push(#{ items: ["item_sphere"], roles: #{
             "": ["counter.item_linken", pop],
             pos1: ["counter.item_linken", pop], pos2: ["counter.item_linken", pop],
